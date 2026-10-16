@@ -1,0 +1,6 @@
+{
+  "name": "JEE Grind Arena",
+  "description": "Real-time competitive study tracker, exam percentile logger, squad bounties, and live podium standings for JEE aspirants.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

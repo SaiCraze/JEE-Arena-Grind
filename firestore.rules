@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Allow full read and write access to public data under artifacts
+    match /artifacts/{appId}/public/data/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "Arena competitor profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "institute": { "type": "string", "maxLength": 100 },
+        "passcode": { "type": "string", "maxLength": 10 },
+        "bonusXp": { "type": "number" },
+        "manualMinutesOffset": { "type": "number" },
+        "isGrinding": { "type": "boolean" },
+        "grindingSubject": { "type": "string", "maxLength": 100 },
+        "grindingStartedAt": { "type": "number" }
+      },
+      "required": ["id", "name"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Study session record",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "maxLength": 128 },
+        "memberName": { "type": "string", "maxLength": 100 },
+        "sessionType": { "type": "string", "enum": ["STUDY", "BREAK"] },
+        "inputMethod": { "type": "string" },
+        "subject": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 30 },
+        "duration": { "type": "number" },
+        "startTime": { "type": "string", "maxLength": 30 },
+        "endTime": { "type": "string", "maxLength": 30 },
+        "questions": { "type": "number" },
+        "difficulty": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "xpEarned": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["memberId", "duration", "timestamp"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Competitive exam marks and percentile",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "maxLength": 128 },
+        "memberName": { "type": "string", "maxLength": 100 },
+        "institute": { "type": "string", "maxLength": 100 },
+        "examType": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 30 },
+        "totalStudents": { "type": "number" },
+        "overallMarks": { "type": "number" },
+        "overallMaxMarks": { "type": "number" },
+        "overallRank": { "type": "number" },
+        "overallPercentile": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["memberId", "overallRank", "totalStudents", "overallPercentile", "timestamp"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Squad bounties or personal tasks",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "subject": { "type": "string", "maxLength": 50 },
+        "xp": { "type": "number" },
+        "questionsText": { "type": "string", "maxLength": 2000 },
+        "linkUrl": { "type": "string", "maxLength": 500 },
+        "doubleXpFirst": { "type": "boolean" },
+        "requireProof": { "type": "boolean" },
+        "isPersonal": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "createdBy": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "xp", "createdAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Admin broadcast notification",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string", "maxLength": 1000 },
+        "target": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["message", "timestamp"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Realtime activity feed event",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 200 },
+        "detail": { "type": "string", "maxLength": 500 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "xpDelta": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["title", "timestamp"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Arena state configuration",
+      "type": "object",
+      "properties": {
+        "leaderboardHidden": { "type": "boolean" },
+        "revealTimestamp": { "type": "number" },
+        "hiddenAt": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/artifacts/{appId}/public/data/members/{memberId}": {
+      "schema": "#/entities/Member",
+      "description": "Competitor roster"
+    },
+    "/artifacts/{appId}/public/data/sessions/{sessionId}": {
+      "schema": "#/entities/Session",
+      "description": "Study logs"
+    },
+    "/artifacts/{appId}/public/data/exams/{examId}": {
+      "schema": "#/entities/Exam",
+      "description": "Exam results"
+    },
+    "/artifacts/{appId}/public/data/tasks/{taskId}": {
+      "schema": "#/entities/Task",
+      "description": "Tasks & bounties"
+    },
+    "/artifacts/{appId}/public/data/announcements/{announcementId}": {
+      "schema": "#/entities/Announcement",
+      "description": "Broadcasts"
+    },
+    "/artifacts/{appId}/public/data/activities/{activityId}": {
+      "schema": "#/entities/Activity",
+      "description": "Real-time activity logs"
+    },
+    "/artifacts/{appId}/public/data/settings/{settingId}": {
+      "schema": "#/entities/Setting",
+      "description": "Arena settings"
+    }
+  }
+}
