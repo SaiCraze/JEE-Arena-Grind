@@ -49,6 +49,11 @@ import {
   PWAOfflineBanner
 } from './components/PWAInstallComponents';
 import {
+  getLocalDateString,
+  parseLocalDateStr,
+  computeMemberStreak
+} from './utils/streak';
+import {
   CYCLE_4_START_MS,
   CYCLE_5_START_MS,
   isBlackoutDay,
@@ -250,8 +255,8 @@ const BADGES: BadgeDefinition[] = [
     description: 'Maintain a 5+ day consecutive login streak.',
     icon: '🔥',
     color: 'from-orange-500 to-rose-500',
-    check: (m) => {
-      const streak = m.streakCount || 1;
+    check: (m, memSessions) => {
+      const streak = computeMemberStreak(m, (memSessions || []).filter(s => s.memberId === m.id));
       return { unlocked: streak >= 5, progress: streak, target: 5, label: `${streak}/5 days` };
     }
   },
@@ -355,13 +360,6 @@ const getStreakMultiplier = (streakCount = 0): number => {
   return 1.0;
 };
 
-function getLocalDateString(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function getIsoWeekKey(d: Date = new Date()): string {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = date.getUTCDay() || 7;
@@ -369,70 +367,6 @@ function getIsoWeekKey(d: Date = new Date()): string {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-}
-
-function parseLocalDateStr(str: string): Date {
-  const [y, m, d] = str.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function computeMemberStreak(m: Member, memberSessions: any[] = [], customTodayStr?: string): number {
-  if (!m) return 1;
-  const todayStr = customTodayStr || getLocalDateString();
-  const activeDates = new Set<string>();
-
-  // Collect all study session dates for this member
-  for (const s of memberSessions) {
-    if (s.memberId !== m.id) continue;
-    if (s.date) {
-      activeDates.add(s.date);
-    } else if (s.timestamp) {
-      activeDates.add(getLocalDateString(new Date(s.timestamp)));
-    }
-  }
-
-  // Include last recorded login date
-  if (m.lastLoginDate) {
-    activeDates.add(m.lastLoginDate);
-  }
-
-  const today = parseLocalDateStr(todayStr);
-  const cur = new Date(today.getTime());
-  const todayDateStr = getLocalDateString(cur);
-
-  // If today does not have an active session or login yet, start counting from yesterday
-  // so the member doesn't lose their streak before having a chance to study today!
-  if (!activeDates.has(todayDateStr)) {
-    cur.setDate(cur.getDate() - 1);
-  }
-
-  let streak = 0;
-  let shieldUsed = false;
-
-  // Maximum 365 days bounded lookback to strictly prevent any runaway loop
-  for (let dayStep = 0; dayStep < 365; dayStep++) {
-    const curStr = getLocalDateString(cur);
-    if (activeDates.has(curStr)) {
-      streak++;
-      cur.setDate(cur.getDate() - 1);
-    } else {
-      // Check if missed day is bridged by an active Rest Shield (within 36h shield window)
-      const isShield = Boolean(
-        m.restShieldUntil &&
-        m.restShieldUntil >= cur.getTime() &&
-        cur.getTime() >= (m.restShieldUntil - 36 * 3600 * 1000)
-      );
-      if (!shieldUsed && (isShield || streak > 0)) {
-        shieldUsed = true;
-        cur.setDate(cur.getDate() - 1);
-        continue;
-      }
-      break;
-    }
-  }
-
-  const calculated = Math.max(1, streak);
-  return Math.max(calculated, Number(m.streakCount) || 1);
 }
 
 interface Teacher {
@@ -1174,10 +1108,10 @@ export default function App() {
 
   // Navigation & Modals
   const [activeTab, setActiveTab] = useState<'arena' | 'timer' | 'tasks' | 'tuition' | 'stats' | 'admin'>('arena');
-  const [leaderboardScope, setLeaderboardScope] = useState<'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'current_week'>(() => {
+  const [leaderboardScope, setLeaderboardScope] = useState<'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'cycle_5' | 'current_week'>(() => {
     try {
       const saved = localStorage.getItem('jee_arena_leaderboard_scope_v3');
-      if (saved === 'all_time' || saved === 'prev_week' || saved === 'cycle_2' || saved === 'cycle_3' || saved === 'cycle_4' || saved === 'current_week') return saved;
+      if (saved === 'all_time' || saved === 'prev_week' || saved === 'cycle_2' || saved === 'cycle_3' || saved === 'cycle_4' || saved === 'cycle_5' || saved === 'current_week') return saved;
     } catch {
       // ignore
     }
@@ -1185,14 +1119,10 @@ export default function App() {
   });
   const [showWinnersModal, setShowWinnersModal] = useState<boolean>(false);
 
-  const handleSetLeaderboardScope = (scope: 'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'current_week') => {
+  const handleSetLeaderboardScope = (scope: 'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'cycle_5' | 'current_week') => {
     setLeaderboardScope(scope);
     if (scope === 'all_time') setStudyTimeframeFilter('lifetime');
-    else if (scope === 'current_week') setStudyTimeframeFilter('7d');
-    else if (scope === 'cycle_4') setStudyTimeframeFilter('7d');
-    else if (scope === 'cycle_3') setStudyTimeframeFilter('7d');
-    else if (scope === 'cycle_2') setStudyTimeframeFilter('7d');
-    else if (scope === 'prev_week') setStudyTimeframeFilter('7d');
+    else setStudyTimeframeFilter('7d');
     try {
       localStorage.setItem('jee_arena_leaderboard_scope_v3', scope);
     } catch {
@@ -1532,7 +1462,7 @@ export default function App() {
       id: 'batch_1',
       examType: 'JEE Mains',
       title: 'Mock Test 1',
-      date: new Date().toISOString().split('T')[0],
+      date: getLocalDateString(),
       overallMarks: '',
       overallMaxMarks: '300',
       overallRank: '',
@@ -1915,11 +1845,10 @@ export default function App() {
 
 
   // Session Logger Modal State
-  const todayStr = new Date().toISOString().split('T')[0];
   const [logSessionType, setLogSessionType] = useState<'STUDY' | 'BREAK'>('STUDY');
   const [logInputMethod, setLogInputMethod] = useState<'TIME_RANGE' | 'DURATION_ONLY'>('TIME_RANGE');
   const [logSubject, setLogSubject] = useState<string>('Math');
-  const [logDate, setLogDate] = useState<string>(todayStr);
+  const [logDate, setLogDate] = useState<string>(() => getLocalDateString());
   const [logDuration, setLogDuration] = useState<string>('60');
   const [logQuickParser, setLogQuickParser] = useState<string>('');
   const [logStartTime, setLogStartTime] = useState<string>('17:30');
@@ -2005,7 +1934,7 @@ export default function App() {
   const [examMemberId, setExamMemberId] = useState<string>('');
   const [examType, setExamType] = useState<string>('JEE Mains');
   const [examTitle, setExamTitle] = useState<string>('');
-  const [examDate, setExamDate] = useState<string>(todayStr);
+  const [examDate, setExamDate] = useState<string>(() => getLocalDateString());
   const [examTotalStudents, setExamTotalStudents] = useState<string>('');
   const [examMarks, setExamMarks] = useState<string>('');
   const [examMaxMarks, setExamMaxMarks] = useState<string>('300');
@@ -2335,7 +2264,7 @@ export default function App() {
         const resolvedReigningId =
           data.reigningSprintId && cleanedHistory.some((s: any) => s.id === data.reigningSprintId)
             ? data.reigningSprintId
-            : 'sprint_4';
+            : (cleanedHistory[0]?.id || 'sprint_4');
         if (localStorage.getItem('jee_arena_active_id') !== 'guest') {
           isBlackoutActiveRef.current = Boolean(data.leaderboardHidden || data.simulateFridayBlackout);
         }
@@ -2346,12 +2275,13 @@ export default function App() {
           leaderboardHidden: data.leaderboardHidden !== undefined ? Boolean(data.leaderboardHidden) : false,
           revealTimestamp: Number(data.revealTimestamp) || 0,
           hiddenAt: data.hiddenAt || null,
+          manualAdminReveal: data.manualAdminReveal !== undefined ? Boolean(data.manualAdminReveal) : Boolean((prev as any).manualAdminReveal),
           autoRoutineEnabled: data.autoRoutineEnabled !== undefined ? Boolean(data.autoRoutineEnabled) : true,
           lockDay: data.lockDay !== undefined ? Number(data.lockDay) : 5,
           lockTime: data.lockTime || '23:59',
           unlockDay: data.unlockDay !== undefined ? Number(data.unlockDay) : 0,
           unlockTime: data.unlockTime || '22:00',
-          autoLocked: false,
+          autoLocked: Boolean(data.autoLocked),
           lastAutoLockDate: data.lastAutoLockDate || '',
           routines: Array.isArray(data.routines) && data.routines.length > 0
             ? data.routines.filter((r: any) => {
@@ -2382,6 +2312,8 @@ export default function App() {
           hostagePacts: Array.isArray(data.hostagePacts) ? data.hostagePacts : (prev.hostagePacts || []),
           simulateFridayBlackout: Boolean(data.simulateFridayBlackout),
           lastMidnightSettlementDateKey: data.lastMidnightSettlementDateKey || prev.lastMidnightSettlementDateKey || '',
+          scheduledBlackoutUnlockAt: data.scheduledBlackoutUnlockAt ? Number(data.scheduledBlackoutUnlockAt) : null,
+          scheduledBlackoutPreNotified: Boolean(data.scheduledBlackoutPreNotified),
           combinedStudyRoom: data.combinedStudyRoom || prev.combinedStudyRoom,
           prankSettings: data.prankSettings !== undefined ? data.prankSettings : (prev.prankSettings || null),
           weeklySleeperAgent: data.weeklySleeperAgent || prev.weeklySleeperAgent || DEFAULT_WEEKLY_SLEEPER_AGENT
@@ -2482,7 +2414,7 @@ export default function App() {
           const resolvedReigningId =
             data.reigningSprintId && cleanedHistory.some((s: any) => s.id === data.reigningSprintId)
               ? data.reigningSprintId
-              : 'sprint_4';
+              : (cleanedHistory[0]?.id || 'sprint_4');
           if (!isGuestActive) {
             isBlackoutActiveRef.current = Boolean(data.leaderboardHidden || data.simulateFridayBlackout);
           }
@@ -2493,12 +2425,13 @@ export default function App() {
             leaderboardHidden: data.leaderboardHidden !== undefined ? Boolean(data.leaderboardHidden) : false,
             revealTimestamp: Number(data.revealTimestamp) || 0,
             hiddenAt: data.hiddenAt || null,
+            manualAdminReveal: data.manualAdminReveal !== undefined ? Boolean(data.manualAdminReveal) : Boolean((prev as any).manualAdminReveal),
             autoRoutineEnabled: data.autoRoutineEnabled !== undefined ? Boolean(data.autoRoutineEnabled) : true,
             lockDay: data.lockDay !== undefined ? Number(data.lockDay) : 5,
             lockTime: data.lockTime || '23:59',
             unlockDay: data.unlockDay !== undefined ? Number(data.unlockDay) : 0,
             unlockTime: data.unlockTime || '22:00',
-            autoLocked: false,
+            autoLocked: Boolean(data.autoLocked),
             lastAutoLockDate: data.lastAutoLockDate || '',
             routines: Array.isArray(data.routines) && data.routines.length > 0 
               ? data.routines.filter((r: any) => {
@@ -3070,10 +3003,9 @@ export default function App() {
         (now.getTime() >= lockTimestampMs && (currentDay === 6 || currentDay === 0));
 
       const alreadyRevealedThisWeekend =
-        Boolean((arenaSettings as any).manualAdminReveal) ||
         (Number(arenaSettings.revealTimestamp) || 0) >= lockTimestampMs ||
         (Number((arenaSettings as any).lastScheduledUnlockCompletedAt) || 0) >= lockTimestampMs ||
-        arenaSettings.lastAutoLockDate === '2026-11-06';
+        arenaSettings.lastAutoLockDate === lockDateKey;
 
       const shouldAutoLockNow =
         isLockRoutineEnabled &&
@@ -3086,6 +3018,7 @@ export default function App() {
 
       if (shouldAutoLockNow && !arenaSettings.leaderboardHidden) {
         try {
+          const nowTs = Math.max(Date.now(), getServerSyncedNow());
           isBlackoutActiveRef.current = true;
           const nextSleeperOnBlackout = {
             ...(arenaSettings.weeklySleeperAgent || DEFAULT_WEEKLY_SLEEPER_AGENT),
@@ -3093,7 +3026,7 @@ export default function App() {
           };
           await setDoc(settingsRef, {
             leaderboardHidden: true,
-            hiddenAt: Date.now(),
+            hiddenAt: nowTs,
             autoLocked: true,
             manualAdminReveal: false,
             lastAutoLockDate: lockDateKey,
@@ -3106,7 +3039,7 @@ export default function App() {
             detail: 'Friday 11:59 PM Blackout activated. Standings, XP & analytics are locked until Admin manual reveal.',
             memberId: 'system',
             xpDelta: 0,
-            timestamp: Date.now()
+            timestamp: nowTs
           });
         } catch (e) {
           console.error('Auto lock error:', e);
@@ -3119,11 +3052,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, [arenaSettings]);
 
-  // Automated Overdue Homework XP Deduction Engine (deduplicated per assignment + student)
+  // Automated Overdue Homework XP Deduction Engine (disabled in background to prevent unexpected XP fluctuations)
   const penalizedOverdueKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const checkOverdueAssignments = async () => {
-      if (isGuestMode || isFirestoreQuotaExceeded()) return;
+      if (true || isGuestMode || isFirestoreQuotaExceeded()) return;
       const now = Date.now();
       const basePath = `artifacts/${appId}/public/data`;
       const activeList = members.length > 0 ? members : DEFAULT_MEMBERS;
@@ -3751,8 +3684,8 @@ export default function App() {
     [stealthNow, arenaSettings.simulateFridayBlackout]
   );
 
-  const isCycle4Active = useMemo(() => isMondayResetActive(stealthNow), [stealthNow]);
-  const isCycle5Active = useMemo(() => isCycle5ResetActive(stealthNow), [stealthNow]);
+  const isCycle4Active = true;
+  const isCycle5Active = true;
 
   const activeSleeperAgent = useMemo<WeeklySleeperAgentState>(() => {
     return arenaSettings.weeklySleeperAgent || DEFAULT_WEEKLY_SLEEPER_AGENT;
@@ -3760,21 +3693,8 @@ export default function App() {
 
   const activeSleeperMemberId = isGuestMode ? '' : (activeSleeperAgent.memberId || 'sai');
 
-  const isSleeperDecoyActiveNow = useMemo(() => {
-    if (isGuestMode) return false;
-    return Boolean(
-      !arenaSettings.leaderboardHidden &&
-      !arenaSettings.simulateFridayBlackout &&
-      !isFridayBlackoutNow &&
-      !activeSleeperAgent.revealedAtBlackout
-    );
-  }, [
-    isGuestMode,
-    arenaSettings.leaderboardHidden,
-    arenaSettings.simulateFridayBlackout,
-    isFridayBlackoutNow,
-    activeSleeperAgent.revealedAtBlackout
-  ]);
+  // Keep XP 100% deterministic across all viewers and Blackout states so gamers' XP never randomly changes
+  const isSleeperDecoyActiveNow: boolean = false;
 
   const canViewerSeeTrueSleeperStats = useMemo(() => {
     if (isGuestMode) return true;
@@ -3785,53 +3705,32 @@ export default function App() {
     );
   }, [isGuestMode, isAdminUnlocked, activeMemberId, activeSleeperMemberId]);
 
-  // Automatically inform the chosen weekly sleeper agent (Sai this week) with a private toast upon login
   const notifiedSleeperWeekRef = useRef<string>('');
   useEffect(() => {
     if (isGuestMode || !activeMemberId || activeMemberId !== activeSleeperMemberId || !isSleeperDecoyActiveNow) return;
     const key = `${activeSleeperAgent.weekKey}_${activeSleeperMemberId}`;
     if (notifiedSleeperWeekRef.current === key) return;
     notifiedSleeperWeekRef.current = key;
-    setTimeout(() => {
-      notify(
-        `🕵️‍♂️ Secret Weekly 10% Sleeper Mission Active!`,
-        `You were randomly selected this week! Rivals only see 10% of your logged study time & study XP (Exam XP is 100%) until Blackout starts to surprise everyone. Your real XP is safely tracked on your screen - do not tell anyone!`
-      );
-    }, 900);
   }, [isGuestMode, activeMemberId, activeSleeperMemberId, activeSleeperAgent.weekKey, isSleeperDecoyActiveNow]);
 
-  // Helper that scales Cycle 5 study sessions of the active sleeper agent to 10% for all other viewers before Blackout starts
   const viewerAdjustedSessions = useMemo(() => {
-    if (!isSleeperDecoyActiveNow || canViewerSeeTrueSleeperStats) {
-      return sessions;
-    }
-    return sessions.map((s) => {
-      if (!s || s.memberId !== activeSleeperMemberId || s.sessionType === 'BREAK') return s;
-      const ts = Number(s.timestamp) || (s.date ? new Date(`${s.date}T12:00:00`).getTime() : 0);
-      if (ts < CYCLE_5_START_MS) return s;
-      const rawDur = Number(s.duration) || 0;
-      const rawXp = Number(s.xpEarned) || 0;
-      const rawSolved = s.solvedQuestions !== undefined ? Number(s.solvedQuestions) : (Number(s.questions) || 0);
-      const rawAttempted = Number(s.attemptedQuestions) || 0;
-      const rawTotalQs = Number(s.questions) || (rawSolved + rawAttempted);
-      return {
-        ...s,
-        duration: rawDur > 0 ? Math.max(1, Math.round(rawDur * 0.10)) : 0,
-        xpEarned: rawXp > 0 ? Math.max(1, Math.round(rawXp * 0.10)) : 0,
-        solvedQuestions: Math.round(rawSolved * 0.10),
-        attemptedQuestions: Math.round(rawAttempted * 0.10),
-        questions: Math.round(rawTotalQs * 0.10)
-      };
-    });
-  }, [sessions, isSleeperDecoyActiveNow, canViewerSeeTrueSleeperStats, activeSleeperMemberId]);
+    return sessions;
+  }, [sessions]);
 
-  // Leaderboard Stats (with Scope Support for All-Time Career, Previous Sprints, and Active Sprint Cycle 5)
-  // Automatically starts everyone at 0 XP in Cycle 5 while preserving all historical data!
+  // Leaderboard Stats (with Scope Support for All-Time Career, Previous Sprints, and Active Sprint Cycle 5+)
+  // Automatically starts everyone at 0 XP in any new cycle while preserving all historical data!
   const leaderboardStats = useMemo(() => {
     const activeMembers = (members.length > 0 ? members : DEFAULT_MEMBERS).filter(
       m => m.approvalStatus !== 'pending' && m.approvalStatus !== 'rejected'
     );
     const isRaidPenaltyWeek = Boolean(arenaSettings.raidFailedPenaltyActive);
+    const activeCycleNum = Math.max(5, Number(arenaSettings.currentCycle) || 5);
+    const activeCycleStartMs = Math.max(
+      CYCLE_5_START_MS,
+      Number(arenaSettings.currentCycleStartMs) || CYCLE_5_START_MS
+    );
+    const isBeyondCycle5 = activeCycleNum > 5 && activeCycleStartMs > CYCLE_5_START_MS;
+    const hasCycleBeenReset = activeCycleNum > 5 || activeCycleStartMs > CYCLE_5_START_MS;
 
     const getSessionTime = (s: any): number => {
       const ts = Number(s.timestamp);
@@ -3856,12 +3755,11 @@ export default function App() {
       const cloakedMemberSessions = allMemberSessions.filter(s => isSessionCloaked(s, stealthNow));
       const cloakedPendingXp = cloakedMemberSessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0);
 
-      // Never subtract or conceal a scholar's study sessions from their XP calculation
       const fridayPendingXp = 0;
       const fridayPendingMins = 0;
       const memSessions = allMemberSessions.filter(s => !isSessionCloaked(s, stealthNow));
 
-      // Strictly isolate sessions for Cycle 1, Cycle 2, Cycle 3, Cycle 4, and Cycle 5
+      // Strictly isolate sessions for Cycle 1, Cycle 2, Cycle 3, Cycle 4, Cycle 5, and Active Cycle (Cycle 6+)
       const cycle1Sessions = memSessions.filter(s => {
         const t = getSessionTime(s);
         return t >= CYCLE_1_START && t < CYCLE_2_START;
@@ -3880,19 +3778,19 @@ export default function App() {
       });
       const cycle5Sessions = memSessions.filter(s => {
         const t = getSessionTime(s);
-        return t >= CYCLE_5_START_MS;
+        return isBeyondCycle5
+          ? t >= CYCLE_5_START_MS && t < activeCycleStartMs
+          : t >= CYCLE_5_START_MS;
+      });
+      const activeSprintSessions = memSessions.filter(s => {
+        const t = getSessionTime(s);
+        return t >= activeCycleStartMs;
       });
 
-      const activeSprintSessions = isCycle5Active
-        ? cycle5Sessions
-        : isCycle4Active
-        ? cycle4Sessions
-        : cycle3Sessions;
-
-      // Today's study minutes and XP (only counting sessions in the active cycle if Cycle 5 just started today)
+      // Today's study minutes and XP (only counting sessions in the active cycle)
       const todaySessionsAll = allMemberSessions.filter(s => {
         const t = getSessionTime(s);
-        if (isCycle5Active && t < CYCLE_5_START_MS) return false;
+        if (t < activeCycleStartMs) return false;
         return s.date === todayLocalDate || t >= todayStartMs;
       });
       const todayStudyMins = todaySessionsAll.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
@@ -3901,11 +3799,7 @@ export default function App() {
       const manualOffsetMins = Number(member.manualMinutesOffset) || 0;
       const cycle4OffsetMins = Number(member.cycle4ManualMinutesOffset) || 0;
       const cycle5OffsetMins = Number(member.cycle5ManualMinutesOffset) || 0;
-      const activeOffsetMins = isCycle5Active
-        ? cycle5OffsetMins
-        : isCycle4Active
-        ? cycle4OffsetMins
-        : manualOffsetMins;
+      const activeOffsetMins = cycle5OffsetMins;
 
       const rawTotalMins = memSessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
       const rawCycle1Mins = cycle1Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
@@ -3913,14 +3807,11 @@ export default function App() {
       const rawCycle3Mins = cycle3Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
       const rawCycle4Mins = cycle4Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
       const rawCycle5Mins = cycle5Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
-      const rawActiveSprintMins = isCycle5Active
-        ? rawCycle5Mins
-        : isCycle4Active
-        ? rawCycle4Mins
-        : rawCycle3Mins;
+      const rawActiveSprintMins = activeSprintSessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
 
       const totalStudyMins = Math.max(0, rawTotalMins + manualOffsetMins + cycle4OffsetMins + cycle5OffsetMins);
       const weekStudyMins = Math.max(0, rawActiveSprintMins + activeOffsetMins);
+      const cycle5StudyMins = Math.max(0, rawCycle5Mins + (isBeyondCycle5 ? 0 : cycle5OffsetMins));
       const cycle4StudyMins = Math.max(0, rawCycle4Mins + cycle4OffsetMins);
       const cycle3StudyMins = Math.max(0, rawCycle3Mins + manualOffsetMins);
       const cycle2StudyMins = Math.max(0, rawCycle2Mins);
@@ -3932,32 +3823,20 @@ export default function App() {
       const cycle3Questions = cycle3Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const cycle4Questions = cycle4Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const cycle5Questions = cycle5Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
-      const weekQuestions = isCycle5Active
-        ? cycle5Questions
-        : isCycle4Active
-        ? cycle4Questions
-        : cycle3Questions;
+      const weekQuestions = activeSprintSessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const prevWeekQuestions = cycle1Questions;
 
       const offsetXp = Math.round((manualOffsetMins / 30) * 10);
       const cycle4OffsetXp = Math.round((cycle4OffsetMins / 30) * 10);
       const cycle5OffsetXp = Math.round((cycle5OffsetMins / 30) * 10);
-      const activeOffsetXp = isCycle5Active
-        ? cycle5OffsetXp
-        : isCycle4Active
-        ? cycle4OffsetXp
-        : offsetXp;
+      const activeOffsetXp = cycle5OffsetXp;
 
       const studyXpCycle1 = Math.max(0, cycle1Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpCycle2 = Math.max(0, cycle2Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpCycle3 = Math.max(0, cycle3Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpCycle4 = Math.max(0, cycle4Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpCycle5 = Math.max(0, cycle5Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
-      const studyXpWeek = isCycle5Active
-        ? studyXpCycle5
-        : isCycle4Active
-        ? studyXpCycle4
-        : studyXpCycle3;
+      const studyXpWeek = Math.max(0, activeSprintSessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpPrevWeek = studyXpCycle1;
       const studyXpTotal = Math.max(0, memSessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0) + offsetXp + cycle4OffsetXp + cycle5OffsetXp);
 
@@ -3980,13 +3859,14 @@ export default function App() {
       });
       const cycle5Exams = memExams.filter(e => {
         const t = getSessionTime(e);
-        return t >= CYCLE_5_START_MS;
+        return isBeyondCycle5
+          ? t >= CYCLE_5_START_MS && t < activeCycleStartMs
+          : t >= CYCLE_5_START_MS;
       });
-      const weekExams = isCycle5Active
-        ? cycle5Exams
-        : isCycle4Active
-        ? cycle4Exams
-        : cycle3Exams;
+      const weekExams = memExams.filter(e => {
+        const t = getSessionTime(e);
+        return t >= activeCycleStartMs;
+      });
       const sortedMemExams = [...memExams].sort((a, b) => getSessionTime(b) - getSessionTime(a));
       const latestExam = sortedMemExams[0] || null;
 
@@ -4011,17 +3891,27 @@ export default function App() {
         weekAvgPercentile = sumPct / weekExams.length;
         examXpWeek = Math.min(examCap, Math.round(weekAvgPercentile * examMultiplier));
         standingStatus = 'fresh_test';
-        standingDetail = `Tested this week (${weekExams[0]?.title || 'Mock Test'} • ${weekAvgPercentile.toFixed(1)}%ile${examCap === 150 ? ' • 150 XP Raid Debt Cap' : ''})`;
+        standingDetail = `Tested this cycle (${weekExams[0]?.title || 'Mock Test'} • ${weekAvgPercentile.toFixed(1)}%ile${examCap === 150 ? ' • 150 XP Raid Debt Cap' : ''})`;
       } else if (latestExam) {
         weekAvgPercentile = Number(latestExam.overallPercentile) || 0;
         examXpWeek = weekAvgPercentile > 0 ? Math.min(examCap, Math.round(weekAvgPercentile * examMultiplier)) : 0;
         standingStatus = 'active_standing';
-        standingDetail = `Carried Standing: ${latestExam.title || 'Previous Exam'} (${weekAvgPercentile.toFixed(1)}%ile -> +${examXpWeek} XP carried until next test logged)`;
+        standingDetail = `Carried Standing: ${latestExam.title || 'Previous Exam'} (${weekAvgPercentile.toFixed(1)}%ile -> +${examXpWeek} XP carried forward until new test logged)`;
       } else {
         weekAvgPercentile = 0;
         examXpWeek = 0;
         standingStatus = 'no_history';
         standingDetail = 'No exam history yet';
+      }
+
+      // Cycle 5 historical exam XP
+      let cycle5ExamXp = 0;
+      if (cycle5Exams.length > 0) {
+        const sumPct = cycle5Exams.reduce((acc, e) => acc + (Number(e.overallPercentile) || 0), 0);
+        cycle5ExamXp = Math.min(examCap, Math.round((sumPct / cycle5Exams.length) * examMultiplier));
+      } else if (latestExam) {
+        const pct = Number(latestExam.overallPercentile) || 0;
+        cycle5ExamXp = pct > 0 ? Math.min(examCap, Math.round(pct * examMultiplier)) : 0;
       }
 
       // Cycle 4 historical exam XP
@@ -4061,6 +3951,7 @@ export default function App() {
         : 0;
 
       let taskXpWeek = 0;
+      let taskXpCycle5 = 0;
       let taskXpCycle4 = 0;
       let taskXpCycle3 = 0;
       let taskXpCycle2 = 0;
@@ -4079,14 +3970,15 @@ export default function App() {
               : Math.max(0, Number(t.xpReward) || 0);
           taskXpTotal += reward;
           const compTime = comp.completedAt || 0;
-          if (compTime >= CYCLE_5_START_MS) {
-            if (isCycle5Active) taskXpWeek += reward;
+          if (compTime >= activeCycleStartMs) {
+            taskXpWeek += reward;
+            if (!isBeyondCycle5) taskXpCycle5 += reward;
+          } else if (compTime >= CYCLE_5_START_MS && compTime < activeCycleStartMs) {
+            taskXpCycle5 += reward;
           } else if (compTime >= CYCLE_4_START_MS && compTime < CYCLE_5_START_MS) {
             taskXpCycle4 += reward;
-            if (!isCycle5Active && isCycle4Active) taskXpWeek += reward;
           } else if (compTime >= CYCLE_3_START && compTime < CYCLE_4_START_MS) {
             taskXpCycle3 += reward;
-            if (!isCycle5Active && !isCycle4Active) taskXpWeek += reward;
           } else if (compTime >= CYCLE_2_START && compTime < CYCLE_3_START) {
             taskXpCycle2 += reward;
           }
@@ -4104,7 +3996,7 @@ export default function App() {
         .reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
 
       // Stats for Algorithmic Weekly Mini-Titles
-      const distinctDaysThisWeek = new Set(activeSprintSessions.map(s => s.date || new Date(s.timestamp || 0).toISOString().split('T')[0])).size;
+      const distinctDaysThisWeek = new Set(activeSprintSessions.map(s => s.date || getLocalDateString(new Date(Number(s.timestamp) || 0)))).size;
       const hardAdvQsThisWeek = activeSprintSessions.reduce((acc, s) => {
         if (s.difficultyBreakdown) {
           return acc + (Number(s.difficultyBreakdown.hard) || 0) + (Number(s.difficultyBreakdown.adv) || 0);
@@ -4133,14 +4025,10 @@ export default function App() {
       const bonusXpCycle3 = Number(member.bonusXp) || 0;
       const bonusXpCycle4 = Number(member.cycle4BonusXp) || 0;
       const bonusXpCycle5 = Number(member.cycle5BonusXp) || 0;
-      const bonusXp = isCycle5Active
-        ? bonusXpCycle5
-        : isCycle4Active
-        ? bonusXpCycle4
-        : bonusXpCycle3;
+      const bonusXp = bonusXpCycle5;
       const cycle2HistoricalBonusXp = !isGuestMode && member.id === 'sai' ? 80 : 0;
 
-      // Active Sprint Score (Cycle 5 starting at 0 XP):
+      // Active Sprint Score:
       const realWeeklyXp = Math.max(0, studyXpWeek + examXpWeek + taskXpWeek + bonusXp + activeOffsetXp);
       const realWeekStudyMins = weekStudyMins;
       const realWeekQuestions = weekQuestions;
@@ -4150,8 +4038,7 @@ export default function App() {
       const realTotalStudyMins = totalStudyMins;
       const realTotalQuestions = totalQuestions;
 
-      // Weekly 10% Sleeper Agent Decoy Calculation (10% of logged study time & non-exam XP, 100% of Exam XP)
-      const isMemberActiveSleeper = Boolean(isCycle5Active && member.id === activeSleeperMemberId);
+      const isMemberActiveSleeper = Boolean(member.id === activeSleeperMemberId);
       const nonExamWeeklyXp = Math.max(0, realWeeklyXp - examXpWeek);
       const decoyNonExamXp = Math.round(nonExamWeeklyXp * 0.10);
       const decoyWeeklyXp = Math.max(0, examXpWeek + decoyNonExamXp);
@@ -4162,11 +4049,7 @@ export default function App() {
       const sleeperHiddenXp = Math.max(0, realWeeklyXp - decoyWeeklyXp);
       const sleeperHiddenMins = Math.max(0, realWeekStudyMins - decoyWeekStudyMins);
 
-      const shouldApplySleeperDecoyForViewer = Boolean(
-        isMemberActiveSleeper &&
-        isSleeperDecoyActiveNow &&
-        !canViewerSeeTrueSleeperStats
-      );
+      const shouldApplySleeperDecoyForViewer = false;
 
       const weeklyXp = shouldApplySleeperDecoyForViewer ? decoyWeeklyXp : realWeeklyXp;
       const effectiveWeekStudyMins = shouldApplySleeperDecoyForViewer ? decoyWeekStudyMins : realWeekStudyMins;
@@ -4175,6 +4058,14 @@ export default function App() {
       const effectiveTodayXpGenerated = shouldApplySleeperDecoyForViewer ? decoyTodayXpGenerated : realTodayXpGenerated;
       const effectiveStudyXpWeek = shouldApplySleeperDecoyForViewer ? Math.round(studyXpWeek * 0.10) : studyXpWeek;
 
+      // Cycle 5 Score (preserved historical Week 5 score):
+      const archivedSprint5Row = Array.isArray(arenaSettings.sprintHistory)
+        ? arenaSettings.sprintHistory
+            .find((sp: any) => sp && sp.id === 'sprint_5')
+            ?.standings?.find((st: any) => st && (st.id === member.id || String(st.name || '').toLowerCase() === String(member.name || '').toLowerCase()))
+        : null;
+      const computedCycle5Xp = Math.max(0, studyXpCycle5 + cycle5ExamXp + taskXpCycle5 + (isBeyondCycle5 ? 0 : bonusXpCycle5 + cycle5OffsetXp));
+      const cycle5Xp = isBeyondCycle5 && archivedSprint5Row?.xp !== undefined ? Number(archivedSprint5Row.xp) : computedCycle5Xp;
       // Cycle 4 Score (preserved historical Week 4 score):
       const cycle4Xp = Math.max(0, studyXpCycle4 + cycle4ExamXp + taskXpCycle4 + bonusXpCycle4 + cycle4OffsetXp);
       // Cycle 3 Score (preserved historical Week 3 score):
@@ -4184,15 +4075,9 @@ export default function App() {
       // Cycle 1 Score:
       const prevWeeklyXp = Math.max(0, studyXpPrevWeek + prevWeekExamXp);
       // Cumulative Career XP:
-      const totalXp = shouldApplySleeperDecoyForViewer
-        ? Math.max(0, realTotalXp - sleeperHiddenXp)
-        : realTotalXp;
-      const effectiveTotalStudyMins = shouldApplySleeperDecoyForViewer
-        ? Math.max(0, realTotalStudyMins - sleeperHiddenMins)
-        : realTotalStudyMins;
-      const effectiveTotalQuestions = shouldApplySleeperDecoyForViewer
-        ? Math.max(0, realTotalQuestions - Math.max(0, realWeekQuestions - decoyWeekQuestions))
-        : realTotalQuestions;
+      const totalXp = realTotalXp;
+      const effectiveTotalStudyMins = realTotalStudyMins;
+      const effectiveTotalQuestions = realTotalQuestions;
 
       // Dynamic display stats driven by selected scope
       let displayXp = weeklyXp;
@@ -4205,6 +4090,11 @@ export default function App() {
         displayStudyMins = effectiveWeekStudyMins;
         displayQuestions = effectiveWeekQuestions;
         displayExamXp = examXpWeek;
+      } else if (leaderboardScope === 'cycle_5') {
+        displayXp = cycle5Xp;
+        displayStudyMins = archivedSprint5Row?.studyMins !== undefined ? Number(archivedSprint5Row.studyMins) : cycle5StudyMins;
+        displayQuestions = archivedSprint5Row?.questions !== undefined ? Number(archivedSprint5Row.questions) : cycle5Questions;
+        displayExamXp = cycle5ExamXp;
       } else if (leaderboardScope === 'cycle_4') {
         displayXp = cycle4Xp;
         displayStudyMins = cycle4StudyMins;
@@ -4333,6 +4223,7 @@ export default function App() {
         weekStudyMins: effectiveWeekStudyMins,
         realWeekStudyMins,
         decoyWeekStudyMins,
+        cycle5StudyMins,
         cycle4StudyMins,
         cycle3StudyMins,
         cycle2StudyMins,
@@ -4341,6 +4232,7 @@ export default function App() {
         weekQuestions: effectiveWeekQuestions,
         realWeekQuestions,
         decoyWeekQuestions,
+        cycle5Questions,
         cycle4Questions,
         cycle3Questions,
         cycle2Questions,
@@ -4357,11 +4249,13 @@ export default function App() {
         longestSessionMins,
         bestPercentile,
         studyXpWeek: effectiveStudyXpWeek,
+        studyXpCycle5,
         studyXpCycle4,
         studyXpCycle3,
         studyXpCycle2,
         studyXpPrevWeek,
         examXpWeek,
+        cycle5ExamXp,
         cycle4ExamXp,
         cycle3ExamXp,
         cycle2ExamXp,
@@ -4374,6 +4268,7 @@ export default function App() {
         sleeperHiddenXp,
         sleeperHiddenMins,
         isWeeklySleeperAgent: isMemberActiveSleeper,
+        cycle5Xp,
         cycle4Xp,
         cycle3Xp,
         cycle2Xp,
@@ -4428,7 +4323,7 @@ export default function App() {
       let weeklyMiniTitle = 'The Comeback Kid';
       if (isCrownedTyrant) {
         weeklyMiniTitle = 'Crowned Tyrant';
-      } else if ((m.streakCount || 1) >= 7 || (m.distinctDaysThisWeek >= maxDays && m.distinctDaysThisWeek > 1)) {
+      } else if ((m.streakCount ?? 0) >= 7 || (m.distinctDaysThisWeek >= maxDays && m.distinctDaysThisWeek > 1)) {
         weeklyMiniTitle = 'The Iron Core';
       } else if (m.hardAdvQsThisWeek >= maxHardAdv && m.hardAdvQsThisWeek >= 20) {
         weeklyMiniTitle = 'The Advanced Demon';
@@ -4455,6 +4350,9 @@ export default function App() {
     tasks,
     weekStartMs,
     arenaSettings.raidFailedPenaltyActive,
+    arenaSettings.currentCycle,
+    arenaSettings.currentCycleStartMs,
+    arenaSettings.sprintHistory,
     leaderboardScope,
     stealthNow,
     studyTimeframeFilter,
@@ -4579,9 +4477,12 @@ export default function App() {
   }, [leaderboardStats, isPrankActiveForUser, effectivePrankConfig, prankTargetId, isTargetTopperPrank, isTargetLastPlacePrank]);
 
   const buildLiveWeeklySprintRecord = (targetCycleOverride?: number) => {
+    const activeCycleNum = Math.max(5, Number(arenaSettings.currentCycle) || 5);
     let cycleNum = targetCycleOverride;
     if (!cycleNum) {
-      if (leaderboardScope === 'cycle_4') {
+      if (leaderboardScope === 'cycle_5') {
+        cycleNum = 5;
+      } else if (leaderboardScope === 'cycle_4') {
         cycleNum = 4;
       } else if (leaderboardScope === 'cycle_3') {
         cycleNum = 3;
@@ -4589,17 +4490,15 @@ export default function App() {
         cycleNum = 2;
       } else if (leaderboardScope === 'prev_week') {
         cycleNum = 1;
-      } else if (isCycle5Active) {
-        const maxCycle5Xp = Math.max(0, ...leaderboardStats.map(s => s.weeklyXp));
-        if (maxCycle5Xp === 0) {
+      } else {
+        const maxActiveXp = Math.max(0, ...leaderboardStats.map(s => s.weeklyXp));
+        if (maxActiveXp === 0 && activeCycleNum > 5) {
+          cycleNum = activeCycleNum - 1;
+        } else if (maxActiveXp === 0) {
           cycleNum = 4;
         } else {
-          cycleNum = 5;
+          cycleNum = activeCycleNum;
         }
-      } else if (isCycle4Active) {
-        cycleNum = 4;
-      } else {
-        cycleNum = 3;
       }
     }
 
@@ -4615,6 +4514,9 @@ export default function App() {
       }
       if (cycleNum === 4) {
         return { xp: s.cycle4Xp, studyMins: s.cycle4StudyMins, questions: s.cycle4Questions };
+      }
+      if (cycleNum === 5 && activeCycleNum > 5) {
+        return { xp: s.cycle5Xp, studyMins: s.cycle5StudyMins, questions: s.cycle5Questions };
       }
       return {
         xp: s.realWeeklyXp !== undefined ? s.realWeeklyXp : s.weeklyXp,
@@ -4671,7 +4573,10 @@ export default function App() {
       sprintTitle = 'Sprint 4 (Arena Clash)';
       dateRange = 'Nov 2 - Nov 8, 2026';
     } else {
-      const cycleStartMs = CYCLE_4_START_MS + (cycleNum - 4) * 7 * 24 * 3600 * 1000;
+      const cycleStartMs =
+        (cycleNum === activeCycleNum && arenaSettings.currentCycleStartMs)
+          ? Number(arenaSettings.currentCycleStartMs)
+          : (CYCLE_4_START_MS + (cycleNum - 4) * 7 * 24 * 3600 * 1000);
       const cycleEndMs = cycleStartMs + 6 * 24 * 3600 * 1000;
       const fmt = (ms: number, includeYear = false) =>
         new Date(ms).toLocaleDateString('en-US', {
@@ -4806,7 +4711,7 @@ export default function App() {
       notify('Admin Access Required', 'Only the Administrator can unlock the leaderboard, archive sprint records, and crown weekly winners.', 'error');
       return;
     }
-    const nowTs = Date.now();
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
     const sprintRecord = buildLiveWeeklySprintRecord(targetCycleOverride);
     const extraRecords: any[] = [];
     if (
@@ -4829,8 +4734,8 @@ export default function App() {
       simulateFridayBlackout: false,
       hiddenAt: null,
       autoLocked: false,
+      manualAdminReveal: true,
       revealTimestamp: nowTs,
-      lastAutoLockDate: '2026-11-06',
       scheduledBlackoutUnlockAt: null,
       scheduledBlackoutPreNotified: false,
       reigningSprintId: sprintRecord.id,
@@ -4853,7 +4758,6 @@ export default function App() {
           autoLocked: false,
           manualAdminReveal: true,
           revealTimestamp: nowTs,
-          lastAutoLockDate: '2026-11-06',
           scheduledBlackoutUnlockAt: null,
           scheduledBlackoutPreNotified: false,
           reigningSprintId: sprintRecord.id,
@@ -4882,7 +4786,7 @@ export default function App() {
       notify('Admin Access Required', 'Only the Administrator can disable Blackout Mode.', 'error');
       return;
     }
-    const nowTs = Date.now();
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
     isBlackoutActiveRef.current = false;
     setArenaSettings(prev => ({
       ...prev,
@@ -4890,8 +4794,8 @@ export default function App() {
       simulateFridayBlackout: false,
       hiddenAt: null,
       autoLocked: false,
+      manualAdminReveal: true,
       revealTimestamp: nowTs,
-      lastAutoLockDate: '2026-11-06',
       scheduledBlackoutUnlockAt: null,
       scheduledBlackoutPreNotified: false
     }));
@@ -4908,7 +4812,6 @@ export default function App() {
           autoLocked: false,
           manualAdminReveal: true,
           revealTimestamp: nowTs,
-          lastAutoLockDate: '2026-11-06',
           scheduledBlackoutUnlockAt: null,
           scheduledBlackoutPreNotified: false
         },
@@ -4936,7 +4839,7 @@ export default function App() {
       await handleAdminDisableBlackoutOnly();
       return;
     }
-    const nowTs = Date.now();
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
     isBlackoutActiveRef.current = true;
     const nextSleeperOnBlackout = {
       ...(arenaSettings.weeklySleeperAgent || DEFAULT_WEEKLY_SLEEPER_AGENT),
@@ -4947,6 +4850,9 @@ export default function App() {
       leaderboardHidden: true,
       hiddenAt: nowTs,
       autoLocked: false,
+      manualAdminReveal: false,
+      scheduledBlackoutUnlockAt: null,
+      scheduledBlackoutPreNotified: false,
       weeklySleeperAgent: nextSleeperOnBlackout
     }));
     setAdminPeekStandings(false);
@@ -4960,6 +4866,8 @@ export default function App() {
           hiddenAt: nowTs,
           autoLocked: false,
           manualAdminReveal: false,
+          scheduledBlackoutUnlockAt: null,
+          scheduledBlackoutPreNotified: false,
           revealTimestamp: arenaSettings.revealTimestamp || 0,
           weeklySleeperAgent: nextSleeperOnBlackout
         },
@@ -5039,23 +4947,36 @@ export default function App() {
     return 0;
   }, [currentTeacher, isAdminUnlocked, activeMemberId, teacherAssignments]);
 
-  const updateDailyStreak = async (targetMem: Member) => {
+  const updateDailyStreak = async (targetMem: Member, extraSessions: any[] = []) => {
     if (!targetMem || !targetMem.id) return;
     const basePath = `artifacts/${appId}/public/data`;
     const today = getLocalDateString();
 
-    const memSessions = sessions.filter(s => s.memberId === targetMem.id && s.sessionType !== 'BREAK');
+    const combinedSessionsMap = new Map<string, any>();
+    for (const s of sessions) {
+      if (s && s.id) combinedSessionsMap.set(s.id, s);
+    }
+    for (let i = 0; i < extraSessions.length; i++) {
+      const es = extraSessions[i];
+      if (es) combinedSessionsMap.set(es.id || `extra_${i}`, es);
+    }
+
+    const memSessions = Array.from(combinedSessionsMap.values()).filter(
+      s => s.memberId === targetMem.id && s.sessionType !== 'BREAK'
+    );
     const newStreak = computeMemberStreak(
       { ...targetMem, lastLoginDate: today },
       memSessions,
       today
     );
 
-    if (targetMem.lastLoginDate === today && targetMem.streakCount === newStreak) {
+    if (targetMem.lastLoginDate === today && Number(targetMem.streakCount) === newStreak) {
       return;
     }
 
-    // Optimistically update local state so this effect never loops on re-renders
+    membersLiveRef.current = membersLiveRef.current.map(m =>
+      m.id === targetMem.id ? { ...m, streakCount: newStreak, lastLoginDate: today } : m
+    );
     setMembers(prev =>
       prev.map(m =>
         m.id === targetMem.id ? { ...m, streakCount: newStreak, lastLoginDate: today } : m
@@ -5073,20 +4994,22 @@ export default function App() {
         streakCount: newStreak,
         lastLoginDate: today
       });
-      const mult = getStreakMultiplier(newStreak);
-      const bonusPct = Math.round((mult - 1) * 100);
-      notify(
-        `🔥 ${newStreak}-Day Study Streak Active!`,
-        bonusPct > 0
-          ? `Awesome consistency! You get a +${bonusPct}% XP Bonus Multiplier!`
-          : `Log in or study daily to stack streak multipliers up to +15% XP!`
-      );
+      if (targetMem.lastLoginDate !== today || newStreak > (Number(targetMem.streakCount) || 0)) {
+        const mult = getStreakMultiplier(newStreak);
+        const bonusPct = Math.round((mult - 1) * 100);
+        notify(
+          `🔥 ${newStreak}-Day Study Streak Active!`,
+          bonusPct > 0
+            ? `Awesome consistency! You get a +${bonusPct}% XP Bonus Multiplier!`
+            : `Log in or study daily to stack streak multipliers up to +15% XP!`
+        );
+      }
     } catch (e) {
       console.error('Streak update error:', e);
     }
   };
 
-  // Daily Streak Auto-Sync: runs at most once per student per calendar day
+  // Daily Streak Auto-Sync: keeps today's login streak & recalculated streakCount in sync
   const lastStreakCheckRef = useRef<string>('');
   useEffect(() => {
     if (!activeMemberId || activeMemberId === 'admin' || activeMemberId === 'guest' || activeMemberId.startsWith('teacher_')) return;
@@ -5094,13 +5017,15 @@ export default function App() {
     if (!target) return;
 
     const today = getLocalDateString();
-    const checkKey = `${activeMemberId}_${today}`;
-    const alreadySyncedToday =
-      lastStreakCheckRef.current === checkKey ||
-      target.lastLoginDate === today ||
-      localStorage.getItem(`jee_arena_streak_synced_${activeMemberId}_${today}`) === '1';
+    const memSessions = sessions.filter(s => s.memberId === activeMemberId && s.sessionType !== 'BREAK');
+    const expectedStreak = computeMemberStreak({ ...target, lastLoginDate: today }, memSessions, today);
+    const checkKey = `${activeMemberId}_${today}_${expectedStreak}`;
 
-    if (alreadySyncedToday) return;
+    if (target.lastLoginDate === today && Number(target.streakCount) === expectedStreak) {
+      lastStreakCheckRef.current = checkKey;
+      return;
+    }
+    if (lastStreakCheckRef.current === checkKey) return;
 
     lastStreakCheckRef.current = checkKey;
     updateDailyStreak(target);
@@ -5115,6 +5040,7 @@ export default function App() {
     }
     const basePath = `artifacts/${appId}/public/data`;
     const shieldUntil = Date.now() + 36 * 3600 * 1000; // 36 hours of streak protection
+    const activeStreak = computeMemberStreak(member, sessions.filter(s => s.memberId === member.id));
     const shieldPatch = {
       restTokens: Math.max(0, tokensAvailable - 1),
       restShieldUntil: shieldUntil
@@ -5129,11 +5055,11 @@ export default function App() {
       await pushActivity(
         'rest_shield',
         `🛡️ ${member.name} activated a Rest Day Shield`,
-        `Streak (${member.streakCount || 1}d) is protected for 36 hours while recharging.`,
+        `Streak (${activeStreak}d) is protected for 36 hours while recharging.`,
         member.id,
         0
       );
-      notify('🛡️ Rest Day Shield Active!', `Your ${member.streakCount || 1}-day streak is protected for 36 hours.`);
+      notify('🛡️ Rest Day Shield Active!', `Your ${activeStreak}-day streak is protected for 36 hours.`);
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `${basePath}/members/${member.id}`);
     }
@@ -6321,23 +6247,9 @@ export default function App() {
     }
   };
 
-  // Automatic Midnight Catch-Up Settlement for Past-Day Active Ambushes
+  // Automatic Midnight Catch-Up Settlement for Past-Day Active Ambushes (manual settlement only to prevent background XP shifts)
   useEffect(() => {
-    if (isGuestMode || isFirestoreQuotaExceeded() || sessions.length === 0 || members.length === 0) return;
-    const todayKey = getLocalDateString();
-    const pastUnsettledDates = Array.from(
-      new Set(
-        (arenaSettings.ambushes || [])
-          .filter(a => a.status === 'active' && a.dateKey && a.dateKey < todayKey)
-          .map(a => a.dateKey)
-      )
-    ).sort();
-
-    if (pastUnsettledDates.length > 0) {
-      handleSettleDailyWarfare(pastUnsettledDates[0], true).catch(err =>
-        console.warn('Auto ambush settlement error:', err)
-      );
-    }
+    if (true || isGuestMode || isFirestoreQuotaExceeded() || sessions.length === 0 || members.length === 0) return;
   }, [isGuestMode, arenaSettings.ambushes, sessions.length, members.length]);
 
   // Toggle Friday Blackout Simulation (Admin testing utility)
@@ -6347,10 +6259,18 @@ export default function App() {
       return;
     }
     const targetVal = typeof nextVal === 'boolean' ? nextVal : !arenaSettings.simulateFridayBlackout;
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
     const basePath = `artifacts/${appId}/public/data`;
     const settingsRef = doc(db, basePath, 'settings', 'arenaState');
-    setArenaSettings(prev => ({ ...prev, simulateFridayBlackout: targetVal }));
-    await setDoc(settingsRef, { simulateFridayBlackout: targetVal }, { merge: true });
+    isBlackoutActiveRef.current = targetVal;
+    const simUpdates = {
+      simulateFridayBlackout: targetVal,
+      leaderboardHidden: targetVal,
+      hiddenAt: targetVal ? nowTs : null,
+      manualAdminReveal: !targetVal
+    };
+    setArenaSettings(prev => ({ ...prev, ...simUpdates }));
+    await setDoc(settingsRef, simUpdates, { merge: true });
     notify(
       targetVal ? '🔒 Friday Blackout Active' : '☀️ Friday Blackout Lifted',
       targetVal
@@ -7060,7 +6980,12 @@ export default function App() {
       localStorage.removeItem('jee_arena_timer_laps');
     }
 
-    if (arenaSettings.combinedStudyRoom?.sharedBlockStartedAt || (arenaSettings.combinedStudyRoom?.selectedMemberIds?.length || 0) > 0) {
+    const isCurrentInRoom = Boolean(
+      currentMember &&
+      Array.isArray(arenaSettings.combinedStudyRoom?.selectedMemberIds) &&
+      arenaSettings.combinedStudyRoom.selectedMemberIds.includes(currentMember.id)
+    );
+    if (isCurrentInRoom && (arenaSettings.combinedStudyRoom?.sharedBlockStartedAt || (arenaSettings.combinedStudyRoom?.selectedMemberIds?.length || 0) > 0)) {
       handleUpdateCombinedStudyRoom({
         sharedBlockStartedAt: null,
         sharedTimerStatus: 'IDLE',
@@ -7070,9 +6995,11 @@ export default function App() {
     }
 
     // Immediately populate and open the Session Logger modal before network roundtrips
+    if (!savingSessionLockRef.current) setIsSavingSession(false);
     setLogSessionType('STUDY');
     setLogInputMethod('DURATION_ONLY');
     setLogSubject(timerSubject);
+    setLogDate(getLocalDateString());
     setLogDuration(String(mins));
     setLogQuestions('');
     setLogAttemptedQuestions('');
@@ -7169,7 +7096,7 @@ export default function App() {
 
     const basePath = `artifacts/${appId}/public/data`;
     const durationMins = Math.max(1, Math.round(Number(payload.durationMins) || 1));
-    const nowSessionMs = Date.now();
+    const nowSessionMs = Math.max(Date.now(), getServerSyncedNow(), (Number(arenaSettings.currentCycleStartMs) || 0) + 1000);
 
     // Prevent accidental rapid duplicate logs within 6 seconds
     const participantKey = payload.participants.map(p => `${p.memberId}:${p.subject}:${p.solvedQuestions}:${p.attemptedQuestions}`).join('|');
@@ -7187,248 +7114,248 @@ export default function App() {
     setIsSavingSession(true);
     lastSavedSessionFingerprintRef.current = { key: sessionFingerprint, ts: nowSessionMs };
 
-    // Immediately close both modals so the user gets instant feedback
-    setShowCombinedStudyModal(false);
-    setShowLogModal(false);
+    try {
+      const dateStr = getLocalDateString();
+      const scholarNames = payload.participants.map(p => p.memberName);
+      const winnerId = payload.challenge.enabled ? payload.challenge.winnerMemberId : null;
+      const winnerParticipant = winnerId ? payload.participants.find(p => p.memberId === winnerId) : null;
 
-    // Stop local timer if running
-    const combinedStopStamp = recordTimerStoppedStamp(
-      Math.max(
-        Number(timerEngineRef.current?.segmentStartedAt) || 0,
-        Number(currentMember?.grindingStartedAt) || 0,
-        Number(currentMember?.grindingUpdatedAt) || 0
-      )
-    );
-    persistTimerEngineState({
-      status: 'IDLE',
-      segmentStartedAt: null,
-      accumulatedSeconds: 0,
-      startedAtStr: ''
-    });
-    setTimerRunning(false);
-    setTimerStartTime(null);
-    setTimerAccumulatedSeconds(0);
-    setTimerSeconds(0);
-    setTimerLaps([]);
-    setTimerLinkedTaskId('');
-    setTimerStartedAtStr('');
-    resetTimerMilestones();
-    if (!isGuestMode) {
-      localStorage.removeItem('jee_arena_timer_running');
-      localStorage.removeItem('jee_arena_timer_start_time');
-      localStorage.removeItem('jee_arena_timer_accumulated_secs');
-      localStorage.removeItem('jee_arena_timer_linked_task_id');
-      localStorage.removeItem('jee_arena_timer_started_at_str');
-      localStorage.removeItem('jee_arena_timer_laps');
-    }
-    stopLockScreenPresence();
-    releaseScreenWakeLock();
-    setWakeLockActive(false);
-    document.title = 'JEE Grind Arena';
+      const createdSessions: Array<{
+        id: string;
+        docRef: ReturnType<typeof doc> | null;
+        raw: any;
+        targetMem: Member;
+        overclockMult: number;
+      }> = [];
+      let totalRaidDamage = 0;
+      let primaryUserXp = 0;
+      let primaryUserQuestions = 0;
 
-    const participantIdsSet = new Set(payload.participants.map(p => p.memberId));
-    membersLiveRef.current = membersLiveRef.current.map(m =>
-      participantIdsSet.has(m.id)
-        ? {
-            ...m,
+      for (let idx = 0; idx < payload.participants.length; idx++) {
+        const p = payload.participants[idx];
+        const targetMem =
+          membersLiveRef.current.find(m => m.id === p.memberId) ||
+          members.find(m => m.id === p.memberId) ||
+          (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === p.memberId) : undefined);
+        if (!targetMem) continue;
+
+        const solvedCount = Math.max(0, Number(p.solvedQuestions) || 0);
+        const attemptedCount = Math.max(0, Number(p.attemptedQuestions) || 0);
+        const totalQ = solvedCount + attemptedCount;
+        const solveRate = totalQ > 0 ? Math.round((solvedCount / totalQ) * 100) : 100;
+
+        const baseSessionXp = calcSessionXp(durationMins, solvedCount, p.difficulty, 'STUDY', attemptedCount);
+        const qDetail = calcQuestionsDetail(solvedCount, attemptedCount, p.difficulty);
+
+        const memberStat = leaderboardStats.find(m => m.id === targetMem.id);
+        const hasUnderdogBuff = Boolean(memberStat?.isUnderdogBuffActive);
+        const liveTargetMem = membersLiveRef.current.find(m => m.id === targetMem.id) || targetMem;
+        const overclockMult = Math.max(
+          Number((liveTargetMem as any)?.nextSessionMultiplier) || 1,
+          Number((targetMem as any)?.nextSessionMultiplier) || 1
+        );
+        const hasActiveHostagePact = (arenaSettings.hostagePacts || []).some(
+          pact =>
+            pact.status === 'active' &&
+            ((pact.partnerAId || pact.memberAId) === targetMem.id ||
+              (pact.partnerBId || pact.memberBId) === targetMem.id)
+        );
+        const bloodPactMult = hasActiveHostagePact ? 1.5 : 1;
+        const combinedMult = (hasUnderdogBuff ? 1.25 : 1) * (overclockMult > 1 ? overclockMult : 1) * bloodPactMult;
+
+        let challengeDeltaXp = 0;
+        if (payload.challenge.enabled && winnerId) {
+          if (p.memberId === winnerId) {
+            challengeDeltaXp = payload.challenge.wagerMode
+              ? payload.challenge.bonusXp * Math.max(1, payload.participants.length - 1)
+              : payload.challenge.bonusXp;
+          } else if (payload.challenge.wagerMode) {
+            challengeDeltaXp = -payload.challenge.bonusXp;
+          }
+        }
+
+        const finalXpEarned = Math.max(0, Math.round(baseSessionXp * combinedMult) + challengeDeltaXp);
+        const coScholars = scholarNames.filter(n => n !== targetMem.name);
+        const challengeTag =
+          payload.challenge.enabled && winnerId
+            ? p.memberId === winnerId
+              ? ` • 🏆 Won "${payload.challenge.title}" (+${challengeDeltaXp} XP)`
+              : payload.challenge.wagerMode
+                ? ` • ⚔️ Lost Wager (-${payload.challenge.bonusXp} XP to ${winnerParticipant?.memberName || 'Winner'})`
+                : ` • ⚔️ Challenge w/ ${winnerParticipant?.memberName || 'Squad'}`
+            : '';
+        const combinedPrefix =
+          coScholars.length > 0
+            ? `[🤝 Combined Study w/ ${coScholars.join(', ')}${challengeTag}]`
+            : `[🤝 Combined Study${challengeTag}]`;
+
+        const combinedNotes = p.notes ? `${combinedPrefix} ${p.notes}` : combinedPrefix;
+        const isStealthActive = Boolean(targetMem.stealthUntil && targetMem.stealthUntil > nowSessionMs);
+        const stealthHideUntilMs = isStealthActive ? targetMem.stealthUntil! : 0;
+
+        const newSession = {
+          memberId: targetMem.id,
+          memberName: targetMem.name,
+          sessionType: 'STUDY' as const,
+          inputMethod: 'DURATION_ONLY' as const,
+          subject: p.subject,
+          date: dateStr,
+          duration: durationMins,
+          startTime: '',
+          endTime: '',
+          questions: totalQ,
+          solvedQuestions: solvedCount,
+          attemptedQuestions: attemptedCount,
+          solveRate,
+          difficulty: p.difficulty,
+          difficultyBreakdown: solvedCount > 0 ? { [p.difficulty]: solvedCount } : {},
+          attemptedBreakdown: attemptedCount > 0 ? { [p.difficulty]: attemptedCount } : {},
+          questionXp: qDetail.totalQuestionXp,
+          linkedTaskIds: [],
+          tasksBonusXp: Math.max(0, challengeDeltaXp),
+          notes: combinedNotes,
+          xpEarned: finalXpEarned,
+          underdogBoosted: hasUnderdogBuff,
+          overclockBoosted: overclockMult > 1,
+          overclockMultiplier: overclockMult > 1 ? overclockMult : 1,
+          bloodPactBoosted: bloodPactMult > 1,
+          stealthLogged: isStealthActive,
+          stealthHideUntil: stealthHideUntilMs,
+          timestamp: nowSessionMs + idx
+        };
+
+        const sessionDocRef = !isGuestMode ? doc(collection(db, basePath, 'sessions')) : null;
+        const sessionDocId = sessionDocRef ? sessionDocRef.id : `demo_${nowSessionMs}_${idx}`;
+        createdSessions.push({ id: sessionDocId, docRef: sessionDocRef, raw: newSession, targetMem, overclockMult });
+        totalRaidDamage += Math.max(1, durationMins + totalQ * 3);
+
+        if (targetMem.id === currentMember?.id || idx === 0) {
+          primaryUserXp = finalXpEarned;
+          primaryUserQuestions = totalQ;
+        }
+      }
+
+      if (createdSessions.length === 0) {
+        notify('Select Scholars', 'No valid scholar profile found to log combined session.', 'error');
+        return;
+      }
+
+      const combinedStopStamp = recordTimerStoppedStamp(
+        Math.max(
+          Number(timerEngineRef.current?.segmentStartedAt) || 0,
+          Number(currentMember?.grindingStartedAt) || 0,
+          Number(currentMember?.grindingUpdatedAt) || 0
+        )
+      );
+
+      if (!isGuestMode) {
+        for (const item of createdSessions) {
+          const memberAfterSessionUpdates = {
             isGrinding: false,
             grindingSubject: '',
             grindingStartedAt: null,
             grindingAccumulatedSeconds: 0,
             grindingLinkedTaskId: '',
-            grindingUpdatedAt: combinedStopStamp
-          }
-        : m
-    );
-    setMembers(prev =>
-      prev.map(m =>
-        participantIdsSet.has(m.id)
-          ? {
-              ...m,
-              isGrinding: false,
-              grindingSubject: '',
-              grindingStartedAt: null,
-              grindingAccumulatedSeconds: 0,
-              grindingLinkedTaskId: '',
-              grindingUpdatedAt: combinedStopStamp
-            }
-          : m
-      )
-    );
-    if (arenaSettings.combinedStudyRoom?.sharedBlockStartedAt || (arenaSettings.combinedStudyRoom?.selectedMemberIds?.length || 0) > 0) {
-      handleUpdateCombinedStudyRoom({
-        sharedBlockStartedAt: null,
-        sharedTimerStatus: 'IDLE',
-        sharedAccumulatedSeconds: 0,
-        selectedMemberIds: []
-      }).catch(() => {});
-    }
-
-    playArpeggioUp();
-
-    const dateStr = getLocalDateString();
-    const scholarNames = payload.participants.map(p => p.memberName);
-    const winnerId = payload.challenge.enabled ? payload.challenge.winnerMemberId : null;
-    const winnerParticipant = winnerId ? payload.participants.find(p => p.memberId === winnerId) : null;
-
-    const createdSessions: any[] = [];
-    let totalRaidDamage = 0;
-    let primaryUserXp = 0;
-    let primaryUserQuestions = 0;
-
-    for (let idx = 0; idx < payload.participants.length; idx++) {
-      const p = payload.participants[idx];
-      const targetMem = members.find(m => m.id === p.memberId) || (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === p.memberId) : undefined);
-      if (!targetMem) continue;
-
-      const solvedCount = Math.max(0, Number(p.solvedQuestions) || 0);
-      const attemptedCount = Math.max(0, Number(p.attemptedQuestions) || 0);
-      const totalQ = solvedCount + attemptedCount;
-      const solveRate = totalQ > 0 ? Math.round((solvedCount / totalQ) * 100) : 100;
-
-      const baseSessionXp = calcSessionXp(durationMins, solvedCount, p.difficulty, 'STUDY', attemptedCount);
-      const qDetail = calcQuestionsDetail(solvedCount, attemptedCount, p.difficulty);
-
-      const memberStat = leaderboardStats.find(m => m.id === targetMem.id);
-      const hasUnderdogBuff = Boolean(memberStat?.isUnderdogBuffActive);
-      const liveTargetMem = membersLiveRef.current.find(m => m.id === targetMem.id) || targetMem;
-      const overclockMult = Math.max(
-        Number((liveTargetMem as any)?.nextSessionMultiplier) || 1,
-        Number((targetMem as any)?.nextSessionMultiplier) || 1
-      );
-      const hasActiveHostagePact = (arenaSettings.hostagePacts || []).some(
-        pact =>
-          pact.status === 'active' &&
-          ((pact.partnerAId || pact.memberAId) === targetMem.id ||
-            (pact.partnerBId || pact.memberBId) === targetMem.id)
-      );
-      const bloodPactMult = hasActiveHostagePact ? 1.5 : 1;
-      const combinedMult = (hasUnderdogBuff ? 1.25 : 1) * (overclockMult > 1 ? overclockMult : 1) * bloodPactMult;
-
-      let challengeDeltaXp = 0;
-      if (payload.challenge.enabled && winnerId) {
-        if (p.memberId === winnerId) {
-          challengeDeltaXp = payload.challenge.wagerMode
-            ? payload.challenge.bonusXp * Math.max(1, payload.participants.length - 1)
-            : payload.challenge.bonusXp;
-        } else if (payload.challenge.wagerMode) {
-          challengeDeltaXp = -payload.challenge.bonusXp;
+            grindingUpdatedAt: combinedStopStamp,
+            ...(item.overclockMult > 1 ? { nextSessionMultiplier: null } : {})
+          };
+          await setDoc(item.docRef!, item.raw);
+          await updateDoc(doc(db, basePath, 'members', item.targetMem.id), memberAfterSessionUpdates);
         }
       }
 
-      const finalXpEarned = Math.max(0, Math.round(baseSessionXp * combinedMult) + challengeDeltaXp);
-      const coScholars = scholarNames.filter(n => n !== targetMem.name);
-      const challengeTag =
-        payload.challenge.enabled && winnerId
-          ? p.memberId === winnerId
-            ? ` • 🏆 Won "${payload.challenge.title}" (+${challengeDeltaXp} XP)`
-            : payload.challenge.wagerMode
-              ? ` • ⚔️ Lost Wager (-${payload.challenge.bonusXp} XP to ${winnerParticipant?.memberName || 'Winner'})`
-              : ` • ⚔️ Challenge w/ ${winnerParticipant?.memberName || 'Squad'}`
-          : '';
-      const combinedPrefix =
-        coScholars.length > 0
-          ? `[🤝 Combined Study w/ ${coScholars.join(', ')}${challengeTag}]`
-          : `[🤝 Combined Study${challengeTag}]`;
+      setShowCombinedStudyModal(false);
+      setShowLogModal(false);
 
-      const combinedNotes = p.notes
-        ? `${combinedPrefix} ${p.notes}`
-        : combinedPrefix;
+      persistTimerEngineState({
+        status: 'IDLE',
+        segmentStartedAt: null,
+        accumulatedSeconds: 0,
+        startedAtStr: ''
+      });
+      setTimerRunning(false);
+      setTimerStartTime(null);
+      setTimerAccumulatedSeconds(0);
+      setTimerSeconds(0);
+      setTimerLaps([]);
+      setTimerLinkedTaskId('');
+      setTimerStartedAtStr('');
+      resetTimerMilestones();
+      if (!isGuestMode) {
+        localStorage.removeItem('jee_arena_timer_running');
+        localStorage.removeItem('jee_arena_timer_start_time');
+        localStorage.removeItem('jee_arena_timer_accumulated_secs');
+        localStorage.removeItem('jee_arena_timer_linked_task_id');
+        localStorage.removeItem('jee_arena_timer_started_at_str');
+        localStorage.removeItem('jee_arena_timer_laps');
+      }
+      stopLockScreenPresence();
+      releaseScreenWakeLock();
+      setWakeLockActive(false);
+      document.title = 'JEE Grind Arena';
 
-      const isStealthActive = Boolean(targetMem.stealthUntil && targetMem.stealthUntil > nowSessionMs);
-      const stealthHideUntilMs = isStealthActive ? targetMem.stealthUntil! : 0;
-
-      const newSession = {
-        memberId: targetMem.id,
-        memberName: targetMem.name,
-        sessionType: 'STUDY' as const,
-        inputMethod: 'DURATION_ONLY' as const,
-        subject: p.subject,
-        date: dateStr,
-        duration: durationMins,
-        startTime: '',
-        endTime: '',
-        questions: totalQ,
-        solvedQuestions: solvedCount,
-        attemptedQuestions: attemptedCount,
-        solveRate,
-        difficulty: p.difficulty,
-        difficultyBreakdown: solvedCount > 0 ? { [p.difficulty]: solvedCount } : {},
-        attemptedBreakdown: attemptedCount > 0 ? { [p.difficulty]: attemptedCount } : {},
-        questionXp: qDetail.totalQuestionXp,
-        linkedTaskIds: [],
-        tasksBonusXp: Math.max(0, challengeDeltaXp),
-        notes: combinedNotes,
-        xpEarned: finalXpEarned,
-        underdogBoosted: hasUnderdogBuff,
-        overclockBoosted: overclockMult > 1,
-        overclockMultiplier: overclockMult > 1 ? overclockMult : 1,
-        bloodPactBoosted: bloodPactMult > 1,
-        stealthLogged: isStealthActive,
-        stealthHideUntil: stealthHideUntilMs,
-        timestamp: nowSessionMs + idx
+      const participantIdsSet = new Set(createdSessions.map(c => c.targetMem.id));
+      const memberTimerClear = {
+        isGrinding: false,
+        grindingSubject: '',
+        grindingStartedAt: null,
+        grindingAccumulatedSeconds: 0,
+        grindingLinkedTaskId: '',
+        grindingUpdatedAt: combinedStopStamp
       };
+      membersLiveRef.current = membersLiveRef.current.map(m =>
+        participantIdsSet.has(m.id) ? { ...m, ...memberTimerClear } : m
+      );
+      setMembers(prev =>
+        prev.map(m =>
+          participantIdsSet.has(m.id) ? { ...m, ...memberTimerClear } : m
+        )
+      );
 
-      createdSessions.push({ id: `local_${nowSessionMs}_${idx}`, raw: newSession, targetMem, overclockMult });
-      totalRaidDamage += Math.max(1, durationMins + totalQ * 3);
-
-      if (targetMem.id === currentMember?.id || idx === 0) {
-        primaryUserXp = finalXpEarned;
-        primaryUserQuestions = totalQ;
+      if (arenaSettings.combinedStudyRoom?.sharedBlockStartedAt || (arenaSettings.combinedStudyRoom?.selectedMemberIds?.length || 0) > 0) {
+        handleUpdateCombinedStudyRoom({
+          sharedBlockStartedAt: null,
+          sharedTimerStatus: 'IDLE',
+          sharedAccumulatedSeconds: 0,
+          selectedMemberIds: []
+        }).catch(() => {});
       }
-    }
 
-    // Optimistically update local sessions list immediately
-    setSessions(prev => [
-      ...createdSessions.map(item => ({ id: item.id, ...item.raw })),
-      ...prev
-    ]);
+      const savedObjects = createdSessions.map(item => ({ id: item.id, ...item.raw }));
+      setSessions(prev => {
+        const existingIds = new Set(prev.map(s => s.id));
+        const toAdd = savedObjects.filter(s => !existingIds.has(s.id));
+        return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+      });
 
-    const squadSummaryLabel = scholarNames.join(' & ');
-    notify(
-      winnerParticipant
-        ? `🏆 Combined Study Logged • ${winnerParticipant.memberName} Won the Challenge!`
-        : `🤝 Combined Study Logged (${squadSummaryLabel})`,
-      `${payload.participants.length} scholars logged ${durationMins}m together! ${
+      playArpeggioUp();
+      const squadSummaryLabel = scholarNames.join(' & ');
+      notify(
         winnerParticipant
-          ? `${winnerParticipant.memberName} claimed +${
-              payload.challenge.wagerMode
-                ? payload.challenge.bonusXp * Math.max(1, payload.participants.length - 1)
-                : payload.challenge.bonusXp
-            } Challenge XP!`
-          : `-${totalRaidDamage} Boss DMG dealt!`
-      }`
-    );
+          ? `🏆 Combined Study Logged • ${winnerParticipant.memberName} Won the Challenge!`
+          : `🤝 Combined Study Logged (${squadSummaryLabel})`,
+        `${createdSessions.length} scholars logged ${durationMins}m together! ${
+          winnerParticipant
+            ? `${winnerParticipant.memberName} claimed +${
+                payload.challenge.wagerMode
+                  ? payload.challenge.bonusXp * Math.max(1, payload.participants.length - 1)
+                  : payload.challenge.bonusXp
+              } Challenge XP!`
+            : `-${totalRaidDamage} Boss DMG dealt!`
+        }`
+      );
 
-    setStudyLogSuccessData({
-      memberName: squadSummaryLabel,
-      xpEarned: primaryUserXp,
-      durationMins,
-      totalQCount: primaryUserQuestions,
-      tasksCount: payload.challenge.enabled && winnerParticipant ? 1 : 0,
-      streakCount: currentMember ? computeMemberStreak(currentMember, [...createdSessions.map(c => c.raw), ...sessions]) : 1
-    });
+      setStudyLogSuccessData({
+        memberName: squadSummaryLabel,
+        xpEarned: primaryUserXp,
+        durationMins,
+        totalQCount: primaryUserQuestions,
+        tasksCount: payload.challenge.enabled && winnerParticipant ? 1 : 0,
+        streakCount: currentMember ? computeMemberStreak(currentMember, [...savedObjects, ...sessions]) : 0
+      });
 
-    try {
       for (const item of createdSessions) {
-        const memberAfterSessionUpdates = {
-          isGrinding: false,
-          grindingSubject: '',
-          grindingStartedAt: null,
-          grindingAccumulatedSeconds: 0,
-          grindingLinkedTaskId: '',
-          ...(item.overclockMult > 1 ? { nextSessionMultiplier: null } : {})
-        };
-        membersLiveRef.current = membersLiveRef.current.map(m => m.id === item.targetMem.id ? { ...m, ...memberAfterSessionUpdates } : m);
-        setMembers(prev => prev.map(m => m.id === item.targetMem.id ? { ...m, ...memberAfterSessionUpdates } : m));
-        if (!isGuestMode) {
-          try {
-            await addDoc(collection(db, basePath, 'sessions'), item.raw);
-            await updateDoc(doc(db, basePath, 'members', item.targetMem.id), memberAfterSessionUpdates);
-          } catch (err) {
-            handleFirestoreError(err, OperationType.CREATE, `${basePath}/sessions`);
-          }
-        }
+        await updateDailyStreak(item.targetMem, [{ id: item.id, ...item.raw }]);
       }
 
       if (arenaSettings.raidEnabled && totalRaidDamage > 0) {
@@ -7444,15 +7371,7 @@ export default function App() {
         if (isGuestMode) {
           setArenaSettings(prev => ({ ...prev, ...raidPatch }));
         } else {
-          try {
-            await setDoc(
-              doc(db, basePath, 'settings', 'arenaState'),
-              raidPatch,
-              { merge: true }
-            );
-          } catch (e) {
-            console.warn('Combined raid boss damage update error:', e);
-          }
+          await setDoc(doc(db, basePath, 'settings', 'arenaState'), raidPatch, { merge: true }).catch(() => {});
         }
       }
 
@@ -7474,6 +7393,14 @@ export default function App() {
         `${perScholarDetails} • -${totalRaidDamage} Boss DMG`,
         currentMember?.id || payload.participants[0].memberId,
         primaryUserXp
+      );
+    } catch (err) {
+      lastSavedSessionFingerprintRef.current = { key: '', ts: 0 };
+      handleFirestoreError(err, OperationType.CREATE, `${basePath}/sessions`);
+      notify(
+        'Failed to Log Combined Session',
+        err instanceof Error ? err.message : 'Unable to save combined session. Please try again.',
+        'error'
       );
     } finally {
       savingSessionLockRef.current = false;
@@ -7802,11 +7729,42 @@ export default function App() {
       const [sh, sm] = newStart.split(':').map(Number);
       const [eh, em] = newEnd.split(':').map(Number);
       let diff = (eh * 60 + em) - (sh * 60 + sm);
-      if (diff <= 0) diff += 24 * 60;
-      if (diff > 0 && diff <= 1440) {
+      if (diff < 0) diff += 24 * 60;
+      if (diff === 0) {
+        setLogDuration('0');
+      } else if (diff > 0 && diff <= 1440) {
         setLogDuration(String(diff));
       }
     }
+  };
+
+  const openLogSessionModal = (targetMemberOverride?: string) => {
+    if (!savingSessionLockRef.current) {
+      setIsSavingSession(false);
+    }
+    const resolvedId =
+      targetMemberOverride ||
+      ((isAdminUnlocked || activeMemberId === 'admin')
+        ? (logTargetMember || members[0]?.id || 'sai')
+        : (currentMember?.id || members[0]?.id || (isGuestMode ? '' : 'sai')));
+    setLogTargetMember(resolvedId);
+    setLogDate(getLocalDateString());
+    setShowLogModal(true);
+  };
+
+  const openLogExamModal = (targetMemberOverride?: string) => {
+    const resolvedId =
+      targetMemberOverride ||
+      ((isAdminUnlocked || activeMemberId === 'admin')
+        ? (examMemberId || members[0]?.id || 'sai')
+        : (currentMember?.id || members[0]?.id || (isGuestMode ? '' : 'sai')));
+    setExamMemberId(resolvedId);
+    const curDate = getLocalDateString();
+    setExamDate(curDate);
+    setBatchExamEntries(prev =>
+      prev.map((row, idx) => (idx === 0 && !row.overallRank && !row.totalStudents ? { ...row, date: curDate } : row))
+    );
+    setShowExamModal(true);
   };
 
   const handleSaveSession = async (e: React.FormEvent) => {
@@ -7816,15 +7774,33 @@ export default function App() {
     const basePath = `artifacts/${appId}/public/data`;
     const targetId = ((isAdminUnlocked || activeMemberId === 'admin') && logTargetMember)
       ? logTargetMember
-      : (currentMember?.id || members[0]?.id || 'sai');
-    const targetMem = members.find(m => m.id === targetId) || (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === targetId) : undefined);
-    if (!targetMem) return;
+      : (currentMember?.id || members[0]?.id || (isGuestMode ? '' : 'sai'));
+    const targetMem =
+      membersLiveRef.current.find(m => m.id === targetId) ||
+      members.find(m => m.id === targetId) ||
+      (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === targetId) : undefined);
 
-    const durationMins = Math.max(1, Math.round(Number(logDuration) || 0));
+    if (!targetMem) {
+      notify('Select a Scholar', 'Please sign in or choose a scholar profile before logging.', 'error');
+      return;
+    }
+
+    const rawDurationMins = Math.round(Number(logDuration) || 0);
+    if (rawDurationMins < 1 || rawDurationMins > 1440) {
+      notify(
+        'Invalid Study Duration',
+        'Duration must be between 1 and 1440 minutes. Adjust the Start/End time or enter minutes.',
+        'error'
+      );
+      return;
+    }
+    const durationMins = rawDurationMins;
     const trimmedNotes = logNotes.trim();
+    const currentTodayStr = getLocalDateString();
+    const effectiveDateStr = logDate && /^\d{4}-\d{2}-\d{2}$/.test(logDate) ? logDate : currentTodayStr;
 
     // Prevent accidental rapid duplicate logs of the exact same session within 8 seconds
-    const sessionFingerprint = `${targetMem.id}_${logSessionType}_${logSubject}_${durationMins}_${totalLogQuestions}_${trimmedNotes}`;
+    const sessionFingerprint = `${targetMem.id}_${logSessionType}_${logSubject}_${effectiveDateStr}_${durationMins}_${totalLogQuestions}_${trimmedNotes}`;
     const nowCheckMs = Date.now();
     if (
       lastSavedSessionFingerprintRef.current.key === sessionFingerprint &&
@@ -7833,292 +7809,295 @@ export default function App() {
       setShowLogModal(false);
       return;
     }
+
     savingSessionLockRef.current = true;
     setIsSavingSession(true);
     lastSavedSessionFingerprintRef.current = { key: sessionFingerprint, ts: nowCheckMs };
 
-    // Capture current form snapshots before immediate modal dismissal
-    const linkedTaskIdsSnapshot = [...logLinkedTaskIds];
-    const taskCompletionStatusSnapshot = { ...logTaskCompletionStatus };
+    try {
+      const linkedTaskIdsSnapshot = [...logLinkedTaskIds];
+      const taskCompletionStatusSnapshot = { ...logTaskCompletionStatus };
 
-    // Solved & Attempted questions aggregation
-    const solvedBreakdownNums: { [k: string]: number } = {};
-    for (const [k, v] of Object.entries(logQuestionsByTier)) {
-      const n = Math.max(0, parseInt(v, 10) || 0);
-      if (n > 0) solvedBreakdownNums[k] = n;
-    }
-    const attemptedBreakdownNums: { [k: string]: number } = {};
-    for (const [k, v] of Object.entries(logAttemptedByTier)) {
-      const n = Math.max(0, parseInt(v, 10) || 0);
-      if (n > 0) attemptedBreakdownNums[k] = n;
-    }
-
-    const solvedInput = logQuestionMode === 'multi_tier' && Object.keys(solvedBreakdownNums).length > 0
-      ? solvedBreakdownNums
-      : totalLogSolved;
-    const attemptedInput = logQuestionMode === 'multi_tier' && Object.keys(attemptedBreakdownNums).length > 0
-      ? attemptedBreakdownNums
-      : totalLogAttempted;
-    const totalQCount = totalLogQuestions;
-    const questionsBreakdownNums = solvedBreakdownNums;
-
-    // Calculate sum of linked task XP to override default XP
-    const tasksBonusXp = linkedTaskIdsSnapshot.reduce((sum, taskId) => {
-      const isTaskDone = (taskCompletionStatusSnapshot[taskId] || 'completed') === 'completed';
-      if (!isTaskDone) return sum;
-
-      if (taskId.startsWith('asg_')) {
-        const asgId = taskId.replace('asg_', '');
-        const asg = teacherAssignments.find(a => a.id === asgId);
-        return sum + (asg && asg.xpReward !== undefined ? Number(asg.xpReward) : 40);
+      const solvedBreakdownNums: { [k: string]: number } = {};
+      for (const [k, v] of Object.entries(logQuestionsByTier)) {
+        const n = Math.max(0, parseInt(v, 10) || 0);
+        if (n > 0) solvedBreakdownNums[k] = n;
       }
-      return sum + 0;
-    }, 0);
-
-    const baseSessionXp = calcSessionXp(durationMins, solvedInput, logDifficulty, logSessionType, attemptedInput);
-    const qDetail = calcQuestionsDetail(solvedInput, attemptedInput, logDifficulty);
-
-    // Check Underdog Comeback Buff (⚡ 1.25x XP if > 150 XP behind the leader), 1.5x Overclock Vault Surge, and 1.5x Hostage Link Blood Pact Multiplier
-    const memberStat = leaderboardStats.find(m => m.id === targetMem.id);
-    const hasUnderdogBuff = Boolean(memberStat?.isUnderdogBuffActive);
-    const liveTargetMem = membersLiveRef.current.find(m => m.id === targetMem.id) || targetMem;
-    const overclockMult = Math.max(
-      Number((liveTargetMem as any)?.nextSessionMultiplier) || 1,
-      Number((targetMem as any)?.nextSessionMultiplier) || 1
-    );
-    const hasActiveHostagePact = (arenaSettings.hostagePacts || []).some(
-      p =>
-        p.status === 'active' &&
-        ((p.partnerAId || p.memberAId) === targetMem.id ||
-          (p.partnerBId || p.memberBId) === targetMem.id)
-    );
-    const bloodPactMult = hasActiveHostagePact && logSessionType === 'STUDY' ? 1.5 : 1;
-    const combinedMult = (hasUnderdogBuff ? 1.25 : 1) * (overclockMult > 1 ? overclockMult : 1) * bloodPactMult;
-    const xpEarned = Math.round(baseSessionXp * combinedMult);
-
-    // Play procedural Web Audio ascending arpeggio
-    playArpeggioUp();
-
-    const activeTierKeys = Array.from(new Set([...Object.keys(solvedBreakdownNums), ...Object.keys(attemptedBreakdownNums)]));
-    const difficultyLabel = activeTierKeys.length > 1 ? 'mixed' : (activeTierKeys[0] || logDifficulty);
-
-    const isStealthActive = Boolean(targetMem.stealthUntil && targetMem.stealthUntil > Date.now());
-    const stealthHideUntilMs = isStealthActive ? targetMem.stealthUntil! : 0;
-
-    // Early Cleanse Checks for Name Hijack (60m uninterrupted study), UI Curse (45m study), and Gulag Penance (45m study)
-    const nowSessionMs = Date.now();
-    const cleanseUpdates: Record<string, any> = {};
-    if (logSessionType === 'STUDY') {
-      if (targetMem.hijackedUntil && targetMem.hijackedUntil > nowSessionMs && durationMins >= 60) {
-        cleanseUpdates.hijackedTitle = null;
-        cleanseUpdates.hijackedUntil = null;
-        cleanseUpdates.hijackedBy = null;
+      const attemptedBreakdownNums: { [k: string]: number } = {};
+      for (const [k, v] of Object.entries(logAttemptedByTier)) {
+        const n = Math.max(0, parseInt(v, 10) || 0);
+        if (n > 0) attemptedBreakdownNums[k] = n;
       }
-      if (targetMem.curseUntil && targetMem.curseUntil > nowSessionMs) {
-        const curseStart = Number(targetMem.curseStartedAt) || (targetMem.curseUntil - 24 * 3600 * 1000);
-        const priorMinsSinceCurse = sessions
-          .filter(s => s.memberId === targetMem.id && s.sessionType === 'STUDY' && (Number(s.timestamp) || 0) >= curseStart)
-          .reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
-        if (priorMinsSinceCurse + durationMins >= 45) {
-          cleanseUpdates.curseUntil = null;
-          cleanseUpdates.curseStartedAt = null;
-          cleanseUpdates.curseBy = null;
+
+      const solvedInput = logQuestionMode === 'multi_tier' && Object.keys(solvedBreakdownNums).length > 0
+        ? solvedBreakdownNums
+        : totalLogSolved;
+      const attemptedInput = logQuestionMode === 'multi_tier' && Object.keys(attemptedBreakdownNums).length > 0
+        ? attemptedBreakdownNums
+        : totalLogAttempted;
+      const totalQCount = totalLogQuestions;
+      const questionsBreakdownNums = solvedBreakdownNums;
+
+      const tasksBonusXp = linkedTaskIdsSnapshot.reduce((sum, taskId) => {
+        const isTaskDone = (taskCompletionStatusSnapshot[taskId] || 'completed') === 'completed';
+        if (!isTaskDone) return sum;
+
+        if (taskId.startsWith('asg_')) {
+          const asgId = taskId.replace('asg_', '');
+          const asg = teacherAssignments.find(a => a.id === asgId);
+          return sum + (asg && asg.xpReward !== undefined ? Number(asg.xpReward) : 40);
+        }
+        return sum + 0;
+      }, 0);
+
+      const baseSessionXp = calcSessionXp(durationMins, solvedInput, logDifficulty, logSessionType, attemptedInput);
+      const qDetail = calcQuestionsDetail(solvedInput, attemptedInput, logDifficulty);
+
+      const memberStat = leaderboardStats.find(m => m.id === targetMem.id);
+      const hasUnderdogBuff = Boolean(memberStat?.isUnderdogBuffActive);
+      const liveTargetMem = membersLiveRef.current.find(m => m.id === targetMem.id) || targetMem;
+      const overclockMult = Math.max(
+        Number((liveTargetMem as any)?.nextSessionMultiplier) || 1,
+        Number((targetMem as any)?.nextSessionMultiplier) || 1
+      );
+      const hasActiveHostagePact = (arenaSettings.hostagePacts || []).some(
+        p =>
+          p.status === 'active' &&
+          ((p.partnerAId || p.memberAId) === targetMem.id ||
+            (p.partnerBId || p.memberBId) === targetMem.id)
+      );
+      const bloodPactMult = hasActiveHostagePact && logSessionType === 'STUDY' ? 1.5 : 1;
+      const combinedMult = (hasUnderdogBuff ? 1.25 : 1) * (overclockMult > 1 ? overclockMult : 1) * bloodPactMult;
+      const xpEarned = Math.round(baseSessionXp * combinedMult);
+
+      const activeTierKeys = Array.from(new Set([...Object.keys(solvedBreakdownNums), ...Object.keys(attemptedBreakdownNums)]));
+      const difficultyLabel = activeTierKeys.length > 1 ? 'mixed' : (activeTierKeys[0] || logDifficulty);
+
+      const isStealthActive = Boolean(targetMem.stealthUntil && targetMem.stealthUntil > Date.now());
+      const stealthHideUntilMs = isStealthActive ? targetMem.stealthUntil! : 0;
+
+      let nowSessionMs = Math.max(Date.now(), getServerSyncedNow(), (Number(arenaSettings.currentCycleStartMs) || 0) + 1000);
+      if (effectiveDateStr !== currentTodayStr) {
+        const timePart = (logInputMethod === 'TIME_RANGE' && logEndTime) ? `${logEndTime}:00` : '12:00:00';
+        const parsedBackdate = new Date(`${effectiveDateStr}T${timePart}`).getTime();
+        if (Number.isFinite(parsedBackdate) && parsedBackdate > 0) {
+          nowSessionMs = parsedBackdate;
         }
       }
-      if (targetMem.gulagState && durationMins >= 45) {
-        cleanseUpdates.gulagState = false;
-        cleanseUpdates.gulagStartedAt = null;
+
+      const cleanseUpdates: Record<string, any> = {};
+      if (logSessionType === 'STUDY') {
+        if (targetMem.hijackedUntil && targetMem.hijackedUntil > nowSessionMs && durationMins >= 60) {
+          cleanseUpdates.hijackedTitle = null;
+          cleanseUpdates.hijackedUntil = null;
+          cleanseUpdates.hijackedBy = null;
+        }
+        if (targetMem.curseUntil && targetMem.curseUntil > nowSessionMs) {
+          const curseStart = Number(targetMem.curseStartedAt) || (targetMem.curseUntil - 24 * 3600 * 1000);
+          const priorMinsSinceCurse = sessions
+            .filter(s => s.memberId === targetMem.id && s.sessionType === 'STUDY' && (Number(s.timestamp) || 0) >= curseStart)
+            .reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
+          if (priorMinsSinceCurse + durationMins >= 45) {
+            cleanseUpdates.curseUntil = null;
+            cleanseUpdates.curseStartedAt = null;
+            cleanseUpdates.curseBy = null;
+          }
+        }
+        if (targetMem.gulagState && durationMins >= 45) {
+          cleanseUpdates.gulagState = false;
+          cleanseUpdates.gulagStartedAt = null;
+        }
+        if (targetMem.soundHornPending) {
+          playObnoxiousAirhorn();
+          cleanseUpdates.soundHornPending = false;
+          cleanseUpdates.soundHornBy = null;
+        }
       }
-      if (targetMem.soundHornPending) {
-        playObnoxiousAirhorn();
-        cleanseUpdates.soundHornPending = false;
-        cleanseUpdates.soundHornBy = null;
-      }
-    }
 
-    const newSession = {
-      memberId: targetMem.id,
-      memberName: targetMem.name,
-      sessionType: logSessionType,
-      inputMethod: logInputMethod,
-      subject: logSubject,
-      date: logDate,
-      duration: durationMins,
-      startTime: logInputMethod === 'TIME_RANGE' ? logStartTime : '',
-      endTime: logInputMethod === 'TIME_RANGE' ? logEndTime : '',
-      questions: totalLogQuestions,
-      solvedQuestions: totalLogSolved,
-      attemptedQuestions: totalLogAttempted,
-      solveRate: logSolveRate,
-      difficulty: difficultyLabel,
-      difficultyBreakdown: solvedBreakdownNums,
-      attemptedBreakdown: attemptedBreakdownNums,
-      questionXp: qDetail.totalQuestionXp,
-      linkedTaskIds: linkedTaskIdsSnapshot,
-      tasksBonusXp,
-      notes: trimmedNotes,
-      xpEarned,
-      underdogBoosted: hasUnderdogBuff,
-      overclockBoosted: overclockMult > 1,
-      overclockMultiplier: overclockMult > 1 ? overclockMult : 1,
-      bloodPactBoosted: bloodPactMult > 1,
-      stealthLogged: isStealthActive,
-      stealthHideUntil: stealthHideUntilMs,
-      timestamp: nowSessionMs
-    };
-
-    const prevRank = leaderboardStats.findIndex(m => m.id === targetMem.id) + 1;
-    const rivalAhead = prevRank > 1 ? leaderboardStats[prevRank - 2] : null;
-    const currentLeaderboardMem = leaderboardStats.find(m => m.id === targetMem.id);
-    const currentWeeklyXp = currentLeaderboardMem ? currentLeaderboardMem.weeklyXp : 0;
-
-    // Optimistically update local sessions state and CLOSE THE MODAL IMMEDIATELY so users never double-submit
-    setSessions(prev => [{ id: `local_${nowSessionMs}`, ...newSession }, ...prev]);
-    setLogQuestions('');
-    setLogAttemptedQuestions('');
-    setLogQuestionsByTier({ easy: '', mains: '', hard: '', adv: '' });
-    setLogAttemptedByTier({ easy: '', mains: '', hard: '', adv: '' });
-    setLogNotes('');
-    setLogQuickParser('');
-    setLogLinkedTaskIds([]);
-    setLogTaskCompletionStatus({});
-    setShowLogModal(false);
-
-    const stopStamp = recordTimerStoppedStamp(
-      Math.max(
-        Number(timerEngineRef.current?.segmentStartedAt) || 0,
-        Number(targetMem.grindingStartedAt) || 0,
-        Number(targetMem.grindingUpdatedAt) || 0
-      )
-    );
-
-    if (targetMem.id === currentMember?.id || targetMem.id === activeMemberId) {
-      persistTimerEngineState({
-        status: 'IDLE',
-        segmentStartedAt: null,
-        accumulatedSeconds: 0,
-        startedAtStr: ''
-      });
-      setTimerRunning(false);
-      setTimerStartTime(null);
-      setTimerAccumulatedSeconds(0);
-      setTimerSeconds(0);
-      setTimerLaps([]);
-      setTimerLinkedTaskId('');
-      setTimerStartedAtStr('');
-      resetTimerMilestones();
-      if (!isGuestMode) {
-        localStorage.removeItem('jee_arena_timer_running');
-        localStorage.removeItem('jee_arena_timer_start_time');
-        localStorage.removeItem('jee_arena_timer_accumulated_secs');
-        localStorage.removeItem('jee_arena_timer_linked_task_id');
-        localStorage.removeItem('jee_arena_timer_started_at_str');
-        localStorage.removeItem('jee_arena_timer_laps');
-      }
-      stopLockScreenPresence();
-      releaseScreenWakeLock();
-      setWakeLockActive(false);
-      document.title = 'JEE Grind Arena';
-    }
-
-    if (arenaSettings.combinedStudyRoom?.sharedBlockStartedAt || (arenaSettings.combinedStudyRoom?.selectedMemberIds?.length || 0) > 0) {
-      handleUpdateCombinedStudyRoom({
-        sharedBlockStartedAt: null,
-        sharedTimerStatus: 'IDLE',
-        sharedAccumulatedSeconds: 0,
-        selectedMemberIds: []
-      }).catch(() => {});
-    }
-
-    // Immediately clear grinding status in local state BEFORE awaiting addDoc so the cross-device sync effect never restarts the timer
-    const memberAfterSessionUpdates = {
-      isGrinding: false,
-      grindingSubject: '',
-      grindingStartedAt: null,
-      grindingAccumulatedSeconds: 0,
-      grindingLinkedTaskId: '',
-      grindingUpdatedAt: stopStamp,
-      ...(overclockMult > 1 ? { nextSessionMultiplier: null } : {}),
-      ...cleanseUpdates
-    };
-    membersLiveRef.current = membersLiveRef.current.map(m =>
-      m.id === targetMem.id ? { ...m, ...memberAfterSessionUpdates } : m
-    );
-    setMembers(prev => prev.map(m => (m.id === targetMem.id ? { ...m, ...memberAfterSessionUpdates } : m)));
-
-    const currentStreak = computeMemberStreak(targetMem, [...sessions, newSession]);
-    const isTargetSleeperNow = Boolean(targetMem.id === activeSleeperMemberId && isSleeperDecoyActiveNow);
-    const decoySessionMins = Math.max(1, Math.round(durationMins * 0.10));
-    const decoySessionXp = Math.max(1, Math.round(xpEarned * 0.10));
-    notify(
-      isStealthActive
-        ? '🌿 Bush Ambush Cloak Active (12h)'
-        : isTargetSleeperNow
-        ? `🕵️‍♂️ 10% Sleeper Log Saved (+${xpEarned} Real XP)`
-        : 'Session Logged',
-      isStealthActive
-        ? `Session & +${xpEarned} XP hidden from the log and leaderboard for 12 hours! Will drop suddenly when timer expires.`
-        : isTargetSleeperNow
-        ? `Your true +${xpEarned} XP (${durationMins}m) is safely banked! Everyone else only sees +${decoySessionXp} XP (${decoySessionMins}m) until Blackout starts!`
-        : `+${xpEarned} XP ${!isRaidBlackoutActive && hasUnderdogBuff ? '(⚡ 1.25x Underdog Buff) ' : ''}${overclockMult > 1 ? `(${overclockMult >= 2 ? '🔥' : '⚡'} ${overclockMult.toFixed(1)}x Overclock) ` : ''}${bloodPactMult > 1 ? '(🩸 1.5x Blood Pact) ' : ''}added to ${targetMem.name} & -${durationMins + totalQCount * 3} Boss DMG!`
-    );
-
-    // Trigger immediate animated SVG celebration!
-    setStudyLogSuccessData({
-      memberName: targetMem.name,
-      xpEarned,
-      durationMins,
-      totalQCount,
-      tasksCount: linkedTaskIdsSnapshot.length,
-      streakCount: currentStreak
-    });
-
-    // If session is 90+ minutes (1h 30m+) of STUDY, unlock 1 Mystery Supply Vault!
-    if (logSessionType === 'STUDY' && durationMins >= 90) {
-      const dropPayload = {
+      const newSession = {
         memberId: targetMem.id,
         memberName: targetMem.name,
-        durationMins,
-        grantedAt: Date.now()
+        sessionType: logSessionType,
+        inputMethod: logInputMethod,
+        subject: logSubject,
+        date: effectiveDateStr,
+        duration: durationMins,
+        startTime: logInputMethod === 'TIME_RANGE' ? logStartTime : '',
+        endTime: logInputMethod === 'TIME_RANGE' ? logEndTime : '',
+        questions: totalLogQuestions,
+        solvedQuestions: totalLogSolved,
+        attemptedQuestions: totalLogAttempted,
+        solveRate: logSolveRate,
+        difficulty: difficultyLabel,
+        difficultyBreakdown: solvedBreakdownNums,
+        attemptedBreakdown: attemptedBreakdownNums,
+        questionXp: qDetail.totalQuestionXp,
+        linkedTaskIds: linkedTaskIdsSnapshot,
+        tasksBonusXp,
+        notes: trimmedNotes,
+        xpEarned,
+        underdogBoosted: hasUnderdogBuff,
+        overclockBoosted: overclockMult > 1,
+        overclockMultiplier: overclockMult > 1 ? overclockMult : 1,
+        bloodPactBoosted: bloodPactMult > 1,
+        stealthLogged: isStealthActive,
+        stealthHideUntil: stealthHideUntilMs,
+        timestamp: nowSessionMs
       };
-      setUnclaimedVaultDrop(dropPayload);
+
+      const stopStamp = recordTimerStoppedStamp(
+        Math.max(
+          Number(timerEngineRef.current?.segmentStartedAt) || 0,
+          Number(targetMem.grindingStartedAt) || 0,
+          Number(targetMem.grindingUpdatedAt) || 0
+        )
+      );
+
+      const memberAfterSessionUpdates = {
+        isGrinding: false,
+        grindingSubject: '',
+        grindingStartedAt: null,
+        grindingAccumulatedSeconds: 0,
+        grindingLinkedTaskId: '',
+        grindingUpdatedAt: stopStamp,
+        ...(overclockMult > 1 ? { nextSessionMultiplier: null } : {}),
+        ...cleanseUpdates
+      };
+
+      const preallocatedSessionRef = !isGuestMode ? doc(collection(db, basePath, 'sessions')) : null;
+      const sessionDocId = preallocatedSessionRef ? preallocatedSessionRef.id : `demo_${nowSessionMs}_${Math.random().toString(36).slice(2, 6)}`;
+      const savedSessionObj = { id: sessionDocId, ...newSession };
+
       if (!isGuestMode) {
-        try {
-          localStorage.setItem('jee_arena_unclaimed_vault_drop', JSON.stringify(dropPayload));
-        } catch {}
+        await updateDoc(doc(db, basePath, 'members', targetMem.id), memberAfterSessionUpdates);
+        await setDoc(preallocatedSessionRef!, newSession);
       }
-      setTimeout(() => {
-        setLootCrateDropData({
+
+      const prevRank = leaderboardStats.findIndex(m => m.id === targetMem.id) + 1;
+      const rivalAhead = prevRank > 1 ? leaderboardStats[prevRank - 2] : null;
+      const currentLeaderboardMem = leaderboardStats.find(m => m.id === targetMem.id);
+      const currentWeeklyXp = currentLeaderboardMem ? currentLeaderboardMem.weeklyXp : 0;
+
+      playArpeggioUp();
+      setSessions(prev => (prev.some(s => s.id === sessionDocId) ? prev : [savedSessionObj, ...prev]));
+      setLogQuestions('');
+      setLogAttemptedQuestions('');
+      setLogQuestionsByTier({ easy: '', mains: '', hard: '', adv: '' });
+      setLogAttemptedByTier({ easy: '', mains: '', hard: '', adv: '' });
+      setLogNotes('');
+      setLogQuickParser('');
+      setLogLinkedTaskIds([]);
+      setLogTaskCompletionStatus({});
+      setShowLogModal(false);
+
+      if (targetMem.id === currentMember?.id || targetMem.id === activeMemberId) {
+        persistTimerEngineState({
+          status: 'IDLE',
+          segmentStartedAt: null,
+          accumulatedSeconds: 0,
+          startedAtStr: ''
+        });
+        setTimerRunning(false);
+        setTimerStartTime(null);
+        setTimerAccumulatedSeconds(0);
+        setTimerSeconds(0);
+        setTimerLaps([]);
+        setTimerLinkedTaskId('');
+        setTimerStartedAtStr('');
+        resetTimerMilestones();
+        if (!isGuestMode) {
+          localStorage.removeItem('jee_arena_timer_running');
+          localStorage.removeItem('jee_arena_timer_start_time');
+          localStorage.removeItem('jee_arena_timer_accumulated_secs');
+          localStorage.removeItem('jee_arena_timer_linked_task_id');
+          localStorage.removeItem('jee_arena_timer_started_at_str');
+          localStorage.removeItem('jee_arena_timer_laps');
+        }
+        stopLockScreenPresence();
+        releaseScreenWakeLock();
+        setWakeLockActive(false);
+        document.title = 'JEE Grind Arena';
+      }
+
+      const isParticipantInCombinedRoom = Boolean(
+        Array.isArray(arenaSettings.combinedStudyRoom?.selectedMemberIds) &&
+        arenaSettings.combinedStudyRoom!.selectedMemberIds!.includes(targetMem.id)
+      );
+      if (isParticipantInCombinedRoom && (arenaSettings.combinedStudyRoom?.sharedBlockStartedAt || (arenaSettings.combinedStudyRoom?.selectedMemberIds?.length || 0) > 0)) {
+        handleUpdateCombinedStudyRoom({
+          sharedBlockStartedAt: null,
+          sharedTimerStatus: 'IDLE',
+          sharedAccumulatedSeconds: 0,
+          selectedMemberIds: []
+        }).catch(() => {});
+      }
+
+      membersLiveRef.current = membersLiveRef.current.map(m =>
+        m.id === targetMem.id ? { ...m, ...memberAfterSessionUpdates } : m
+      );
+      setMembers(prev => prev.map(m => (m.id === targetMem.id ? { ...m, ...memberAfterSessionUpdates } : m)));
+
+      const currentStreak = computeMemberStreak({ ...targetMem, lastLoginDate: effectiveDateStr === currentTodayStr ? currentTodayStr : targetMem.lastLoginDate }, [savedSessionObj, ...sessions]);
+      const isTargetSleeperNow = Boolean(targetMem.id === activeSleeperMemberId && isSleeperDecoyActiveNow);
+      const decoySessionMins = Math.max(1, Math.round(durationMins * 0.10));
+      const decoySessionXp = Math.max(1, Math.round(xpEarned * 0.10));
+      notify(
+        isStealthActive
+          ? '🌿 Bush Ambush Cloak Active (12h)'
+          : isTargetSleeperNow
+          ? `🕵️‍♂️ 10% Sleeper Log Saved (+${xpEarned} Real XP)`
+          : 'Session Logged',
+        isStealthActive
+          ? `Session & +${xpEarned} XP hidden from the log and leaderboard for 12 hours! Will drop suddenly when timer expires.`
+          : isTargetSleeperNow
+          ? `Your true +${xpEarned} XP (${durationMins}m) is safely banked! Everyone else only sees +${decoySessionXp} XP (${decoySessionMins}m) until Blackout starts!`
+          : `+${xpEarned} XP ${!isRaidBlackoutActive && hasUnderdogBuff ? '(⚡ 1.25x Underdog Buff) ' : ''}${overclockMult > 1 ? `(${overclockMult >= 2 ? '🔥' : '⚡'} ${overclockMult.toFixed(1)}x Overclock) ` : ''}${bloodPactMult > 1 ? '(🩸 1.5x Blood Pact) ' : ''}added to ${targetMem.name} & -${durationMins + totalQCount * 3} Boss DMG!`
+      );
+
+      setStudyLogSuccessData({
+        memberName: targetMem.name,
+        xpEarned,
+        durationMins,
+        totalQCount,
+        tasksCount: linkedTaskIdsSnapshot.length,
+        streakCount: currentStreak
+      });
+
+      if (logSessionType === 'STUDY' && durationMins >= 90) {
+        const dropPayload = {
           memberId: targetMem.id,
           memberName: targetMem.name,
-          durationMins
-        });
-      }, 2800);
-    }
-
-    if (!isStealthActive && !isRaidBlackoutActive && rivalAhead && (currentWeeklyXp + xpEarned) > rivalAhead.weeklyXp) {
-      setTimeout(() => {
-        setArenaOvertakeData({
-          challengerName: targetMem.name,
-          rivalName: rivalAhead.name,
-          oldRank: prevRank,
-          newRank: Math.max(1, prevRank - 1),
-          differenceXp: xpEarned
-        });
-      }, 3500);
-    }
-
-    try {
-      if (!isGuestMode) {
-        try {
-          await updateDoc(doc(db, basePath, 'members', targetMem.id), memberAfterSessionUpdates);
-          await addDoc(collection(db, basePath, 'sessions'), newSession);
-        } catch (err) {
-          handleFirestoreError(err, OperationType.CREATE, `${basePath}/sessions`);
+          durationMins,
+          grantedAt: Date.now()
+        };
+        setUnclaimedVaultDrop(dropPayload);
+        if (!isGuestMode) {
+          try {
+            localStorage.setItem('jee_arena_unclaimed_vault_drop', JSON.stringify(dropPayload));
+          } catch {}
         }
+        setTimeout(() => {
+          setLootCrateDropData({
+            memberId: targetMem.id,
+            memberName: targetMem.name,
+            durationMins
+          });
+        }, 2800);
       }
 
-      // Deal damage to Co-op Raid Boss (1 HP per study minute + 3 HP per solved problem) - only publicly attribute if not cloaked
+      if (!isStealthActive && !isRaidBlackoutActive && rivalAhead && (currentWeeklyXp + xpEarned) > rivalAhead.weeklyXp) {
+        setTimeout(() => {
+          setArenaOvertakeData({
+            challengerName: targetMem.name,
+            rivalName: rivalAhead.name,
+            oldRank: prevRank,
+            newRank: Math.max(1, prevRank - 1),
+            differenceXp: xpEarned
+          });
+        }, 3500);
+      }
+
+      // Deal damage to Co-op Raid Boss (1 HP per study minute + 3 HP per solved problem)
       if (logSessionType === 'STUDY' && arenaSettings.raidEnabled && !isStealthActive) {
         const damageDealt = Math.max(1, durationMins + totalQCount * 3);
         const nextBossHp = Math.max(0, (Number(arenaSettings.raidBossCurrentHp) || 0) - damageDealt);
@@ -8134,11 +8113,9 @@ export default function App() {
           setArenaSettings(prev => ({ ...prev, ...raidPatch }));
         } else {
           const settingsRef = doc(db, basePath, 'settings', 'arenaState');
-          try {
-            await setDoc(settingsRef, raidPatch, { merge: true });
-          } catch (e) {
+          await setDoc(settingsRef, raidPatch, { merge: true }).catch(e => {
             console.warn('Raid boss damage update error:', e);
-          }
+          });
         }
       }
 
@@ -8208,13 +8185,9 @@ export default function App() {
           if (isGuestMode) {
             setTasks(prev => prev.map(t => t.id === taskObj.id ? { ...t, timeSpentByMember: updatedTimeMap } : t));
           } else {
-            try {
-              await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
-                timeSpentByMember: updatedTimeMap
-              });
-            } catch (e) {
-              console.error(e);
-            }
+            await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
+              timeSpentByMember: updatedTimeMap
+            }).catch(e => console.error(e));
           }
           continue;
         }
@@ -8227,13 +8200,9 @@ export default function App() {
             if (isGuestMode) {
               setTasks(prev => prev.map(t => t.id === taskObj.id ? { ...t, timeSpentByMember: updatedTimeMap } : t));
             } else {
-              try {
-                await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
-                  timeSpentByMember: updatedTimeMap
-                });
-              } catch (e) {
-                console.error(e);
-              }
+              await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
+                timeSpentByMember: updatedTimeMap
+              }).catch(e => console.error(e));
             }
             taskRequiringProof = taskObj;
           } else {
@@ -8244,7 +8213,7 @@ export default function App() {
 
             completions[targetMem.id] = {
               status: 'verified',
-              completedAt: Date.now(),
+              completedAt: nowSessionMs,
               xpAwarded: awardedXp,
               isFirstBlood,
               proofImages: [],
@@ -8254,14 +8223,10 @@ export default function App() {
             if (isGuestMode) {
               setTasks(prev => prev.map(t => t.id === taskObj.id ? { ...t, timeSpentByMember: updatedTimeMap, completions } : t));
             } else {
-              try {
-                await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
-                  timeSpentByMember: updatedTimeMap,
-                  completions
-                });
-              } catch (e) {
-                console.error(e);
-              }
+              await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
+                timeSpentByMember: updatedTimeMap,
+                completions
+              }).catch(e => console.error(e));
             }
 
             if (!isStealthActive) {
@@ -8278,13 +8243,9 @@ export default function App() {
           if (isGuestMode) {
             setTasks(prev => prev.map(t => t.id === taskObj.id ? { ...t, timeSpentByMember: updatedTimeMap } : t));
           } else {
-            try {
-              await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
-                timeSpentByMember: updatedTimeMap
-              });
-            } catch (e) {
-              console.error(e);
-            }
+            await updateDoc(doc(db, basePath, 'tasks', taskObj.id), {
+              timeSpentByMember: updatedTimeMap
+            }).catch(e => console.error(e));
           }
         }
       }
@@ -8307,7 +8268,7 @@ export default function App() {
         );
       }
 
-      await updateDailyStreak(targetMem);
+      await updateDailyStreak(targetMem, [savedSessionObj]);
 
       if (taskRequiringProof) {
         setProofTaskModal(taskRequiringProof);
@@ -8320,6 +8281,14 @@ export default function App() {
           executeAcceptCombinedStudyInvite(inviteToExecute);
         }, 500);
       }
+    } catch (err) {
+      lastSavedSessionFingerprintRef.current = { key: '', ts: 0 };
+      handleFirestoreError(err, OperationType.CREATE, `${basePath}/sessions`);
+      notify(
+        'Could Not Log Session',
+        err instanceof Error ? err.message : 'Unable to reach server to save your session. Please try again.',
+        'error'
+      );
     } finally {
       savingSessionLockRef.current = false;
       setIsSavingSession(false);
@@ -8436,9 +8405,7 @@ export default function App() {
     const targetId = (activeMemberId && activeMemberId !== 'admin' && activeMemberId !== 'guest' && !activeMemberId.startsWith('teacher_'))
       ? activeMemberId
       : (currentMember?.id || members[0]?.id || (isGuestMode ? '' : 'sai'));
-    setLogTargetMember(targetId);
-
-    setShowLogModal(true);
+    openLogSessionModal(targetId);
     notify(
       'Redirected to Study Session Logger',
       `Log your timings range & questions solved for "${task.title}". XP will be awarded based on your questions & time!`
@@ -8451,7 +8418,10 @@ export default function App() {
     const task = completeTaskModal;
     const basePath = `artifacts/${appId}/public/data`;
     const targetMem = currentMember || members[0] || (!isGuestMode ? DEFAULT_MEMBERS[0] : undefined);
-    if (!targetMem) return;
+    if (!targetMem) {
+      notify('Select a Scholar', 'Please sign in or choose a scholar profile before logging.', 'error');
+      return;
+    }
 
     // Task completion alone is capped at 30 XP max
     const taskRawXp = Number(task.xp) !== undefined && task.xp !== null ? Number(task.xp) : 25;
@@ -8477,35 +8447,42 @@ export default function App() {
 
     const isStealthActive = Boolean(targetMem.stealthUntil && targetMem.stealthUntil > Date.now());
     const stealthHideUntilMs = isStealthActive ? targetMem.stealthUntil! : 0;
+    const nowDateStr = getLocalDateString();
 
     // Save Study Session Record
     const newSession = {
       memberId: targetMem.id,
       memberName: targetMem.name,
+      sessionType: 'STUDY',
       subject: task.subject || 'Physics',
       duration: durationMins,
       questions: qCount,
+      solvedQuestions: qCount,
+      attemptedQuestions: 0,
       difficulty: completeTaskDifficulty,
       xpEarned: questionsXp,
       notes: completeTaskNotes.trim() || `Task Completed: "${task.title}"`,
-      date: todayStr,
+      date: nowDateStr,
       stealthLogged: isStealthActive,
       stealthHideUntil: stealthHideUntilMs,
-      timestamp: Date.now()
+      timestamp: Math.max(Date.now(), getServerSyncedNow(), (Number(arenaSettings.currentCycleStartMs) || 0) + 1000)
     };
 
     try {
+      const sessRef = !isGuestMode ? doc(collection(db, basePath, 'sessions')) : null;
+      const sessId = sessRef ? sessRef.id : `demo_sess_${Date.now()}`;
+      const savedSess = { id: sessId, ...newSession };
+
       if (isGuestMode) {
-        if (qCount > 0 || durationMins > 0) {
-          setSessions(prev => [{ id: `demo_sess_${Date.now()}`, ...newSession }, ...prev]);
-        }
-      } else if (qCount > 0 || durationMins > 0) {
-        await addDoc(collection(db, basePath, 'sessions'), newSession);
+        setSessions(prev => [savedSess, ...prev]);
+      } else {
+        await setDoc(sessRef!, newSession);
+        setSessions(prev => (prev.some(s => s.id === sessId) ? prev : [savedSess, ...prev]));
       }
 
       completions[targetMem.id] = {
         status: task.requireProof && completeTaskProofImages.length === 0 ? 'pending_review' : 'verified',
-        completedAt: Date.now(),
+        completedAt: Math.max(Date.now(), getServerSyncedNow(), (Number(arenaSettings.currentCycleStartMs) || 0) + 1000),
         xpAwarded: totalEarnedXp,
         isFirstBlood,
         proofImages: completeTaskProofImages,
@@ -8541,6 +8518,8 @@ export default function App() {
         );
       }
 
+      await updateDailyStreak(targetMem, [savedSess]);
+
       setCompleteTaskModal(null);
       notify(
         'Task Completed & Session Logged!',
@@ -8548,6 +8527,11 @@ export default function App() {
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${basePath}/tasks/${task.id}`);
+      notify(
+        'Failed to Log Task',
+        err instanceof Error ? err.message : 'Unable to save task completion to server.',
+        'error'
+      );
     }
   };
 
@@ -8578,9 +8562,15 @@ export default function App() {
     const basePath = `artifacts/${appId}/public/data`;
     const targetId = ((isAdminUnlocked || activeMemberId === 'admin') && examMemberId)
       ? examMemberId
-      : (currentMember?.id || members[0]?.id || 'sai');
-    const targetMem = members.find(m => m.id === targetId) || (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === targetId) : undefined);
-    if (!targetMem) return;
+      : (currentMember?.id || members[0]?.id || (isGuestMode ? '' : 'sai'));
+    const targetMem =
+      membersLiveRef.current.find(m => m.id === targetId) ||
+      members.find(m => m.id === targetId) ||
+      (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === targetId) : undefined);
+    if (!targetMem) {
+      notify('Select a Scholar', 'Please choose which scholar this mock exam belongs to.', 'error');
+      return;
+    }
 
     const totalCandidates = Number(examTotalStudents);
     const overallRankNum = Number(examRank);
@@ -8618,14 +8608,21 @@ export default function App() {
         };
       });
 
-    const examTimestamp = examDate ? new Date(examDate + 'T12:00:00').getTime() : Date.now();
+    const currentTodayStr = getLocalDateString();
+    const effectiveExamDate = examDate && /^\d{4}-\d{2}-\d{2}$/.test(examDate) ? examDate : currentTodayStr;
+    const syncedExamNow = Math.max(Date.now(), getServerSyncedNow(), (Number(arenaSettings.currentCycleStartMs) || 0) + 1000);
+    const parsedExamDateMs = new Date(`${effectiveExamDate}T12:00:00`).getTime();
+    const examTimestamp = effectiveExamDate === currentTodayStr
+      ? syncedExamNow
+      : (Number.isFinite(parsedExamDateMs) ? parsedExamDateMs : syncedExamNow);
+
     const examDoc = {
       memberId: targetMem.id,
       memberName: targetMem.name,
       institute: targetMem.institute,
       examType,
       title: examTitle.trim() || `${examType} Test`,
-      date: examDate,
+      date: effectiveExamDate,
       totalStudents: totalCandidates,
       overallMarks: Number(examMarks) || 0,
       overallMaxMarks: Number(examMaxMarks) || 300,
@@ -8650,7 +8647,7 @@ export default function App() {
       await pushActivity(
         'exam_log',
         `🏆 ${targetMem.name} logged ${examDoc.title}`,
-        `Rank #${overallRankNum}/${totalCandidates} (${overallPct.toFixed(1)}%ile) • Date: ${examDate} • ${examDoc.overallMarks}/${examDoc.overallMaxMarks}`,
+        `Rank #${overallRankNum}/${totalCandidates} (${overallPct.toFixed(1)}%ile) • Date: ${effectiveExamDate} • ${examDoc.overallMarks}/${examDoc.overallMaxMarks}`,
         targetMem.id,
         Math.round(overallPct * 3)
       );
@@ -8658,6 +8655,7 @@ export default function App() {
       setExamTotalStudents('');
       setExamMarks('');
       setExamRank('');
+      setExamDate(getLocalDateString());
       setShowExamModal(false);
       notify('Exam Logged (Demo)', `${overallPct.toFixed(1)}%ile recorded for ${targetMem.name}`);
       fetchAiDiagnosticSummary(targetMem.id, [demoExamDoc, ...exams.filter(ex => ex.memberId === targetMem.id)]);
@@ -8665,9 +8663,11 @@ export default function App() {
     }
 
     try {
-      await addDoc(collection(db, basePath, 'exams'), examDoc);
+      const newExamRef = doc(collection(db, basePath, 'exams'));
+      const savedExamObj = { id: newExamRef.id, ...examDoc };
+      await setDoc(newExamRef, examDoc);
+      setExams(prev => (prev.some(ex => ex.id === newExamRef.id) ? prev : [savedExamObj, ...prev]));
 
-      // Writing an exam updates the student's standing and clears any unexcused zero penalty!
       if (targetMem.unexcusedZero) {
         await updateDoc(doc(db, basePath, 'members', targetMem.id), {
           unexcusedZero: false,
@@ -8679,7 +8679,7 @@ export default function App() {
       await pushActivity(
         'exam_log',
         `🏆 ${targetMem.name} logged ${examDoc.title}`,
-        `Rank #${overallRankNum}/${totalCandidates} (${overallPct.toFixed(1)}%ile) • Date: ${examDate} • ${examDoc.overallMarks}/${examDoc.overallMaxMarks}`,
+        `Rank #${overallRankNum}/${totalCandidates} (${overallPct.toFixed(1)}%ile) • Date: ${effectiveExamDate} • ${examDoc.overallMarks}/${examDoc.overallMaxMarks}`,
         targetMem.id,
         Math.round(overallPct * 3)
       );
@@ -8688,13 +8688,18 @@ export default function App() {
       setExamTotalStudents('');
       setExamMarks('');
       setExamRank('');
+      setExamDate(getLocalDateString());
       setShowExamModal(false);
       notify('Exam Logged', `${overallPct.toFixed(1)}%ile recorded for ${targetMem.name}`);
 
-      // Automatically generate AI Diagnostic Summary from test to test
-      fetchAiDiagnosticSummary(targetMem.id, [examDoc, ...exams.filter(e => e.memberId === targetMem.id)]);
+      fetchAiDiagnosticSummary(targetMem.id, [savedExamObj, ...exams.filter(ex => ex.memberId === targetMem.id)]);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `${basePath}/exams`);
+      notify(
+        'Failed to Log Exam',
+        err instanceof Error ? err.message : 'Unable to save exam result to server. Please try again.',
+        'error'
+      );
     }
   };
 
@@ -8704,9 +8709,15 @@ export default function App() {
     const basePath = `artifacts/${appId}/public/data`;
     const targetId = ((isAdminUnlocked || activeMemberId === 'admin') && examMemberId)
       ? examMemberId
-      : (currentMember?.id || members[0]?.id || 'sai');
-    const targetMem = members.find(m => m.id === targetId) || (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === targetId) : undefined);
-    if (!targetMem) return;
+      : (currentMember?.id || members[0]?.id || (isGuestMode ? '' : 'sai'));
+    const targetMem =
+      membersLiveRef.current.find(m => m.id === targetId) ||
+      members.find(m => m.id === targetId) ||
+      (!isGuestMode ? DEFAULT_MEMBERS.find(m => m.id === targetId) : undefined);
+    if (!targetMem) {
+      notify('Select a Scholar', 'Please choose which scholar these exams belong to.', 'error');
+      return;
+    }
 
     const validEntries = batchExamEntries.filter(b => {
       const r = Number(b.overallRank);
@@ -8715,19 +8726,22 @@ export default function App() {
     });
 
     if (validEntries.length === 0) {
-      notify('Incomplete Test Entries', 'Please enter Rank and Batch Total for at least one test.', 'error');
+      notify('Incomplete Test Entries', 'Please enter Rank and Batch Total (>= Rank) for at least one test.', 'error');
       return;
     }
 
     try {
+      const currentTodayStr = getLocalDateString();
       const newExamsList: any[] = [];
       for (let idx = 0; idx < validEntries.length; idx++) {
         const entry = validEntries[idx];
         const r = Number(entry.overallRank);
         const t = Number(entry.totalStudents);
         const pct = calcPercentile(r, t);
-        const eDate = entry.date || todayStr;
-        const eTimestamp = new Date(eDate + 'T12:00:00').getTime();
+        const eDate = entry.date || currentTodayStr;
+        const eTimestamp = eDate === currentTodayStr
+          ? Math.max(Date.now(), getServerSyncedNow(), (Number(arenaSettings.currentCycleStartMs) || 0) + 1000) + idx
+          : new Date(`${eDate}T12:00:00`).getTime();
 
         const docData = {
           memberId: targetMem.id,
@@ -8747,13 +8761,18 @@ export default function App() {
         if (isGuestMode) {
           newExamsList.push({ id: `demo_exam_${Date.now()}_${idx}`, ...docData });
         } else {
-          await addDoc(collection(db, basePath, 'exams'), docData);
-          newExamsList.push(docData);
+          const ref = doc(collection(db, basePath, 'exams'));
+          await setDoc(ref, docData);
+          newExamsList.push({ id: ref.id, ...docData });
         }
       }
 
+      setExams(prev => {
+        const seen = new Set(prev.map(x => x.id));
+        return [...newExamsList.filter(x => !seen.has(x.id)), ...prev];
+      });
+
       if (isGuestMode) {
-        setExams(prev => [...newExamsList, ...prev]);
         if (targetMem.unexcusedZero) {
           setMembers(prev =>
             prev.map(m =>
@@ -8780,12 +8799,13 @@ export default function App() {
       );
 
       setShowExamModal(false);
+      setExamEntryMode('single');
       setBatchExamEntries([
         {
           id: 'batch_1',
           examType: 'JEE Mains',
           title: 'Mock Test 1',
-          date: todayStr,
+          date: getLocalDateString(),
           overallMarks: '',
           overallMaxMarks: '300',
           overallRank: '',
@@ -8798,6 +8818,11 @@ export default function App() {
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `${basePath}/exams`);
+      notify(
+        'Failed to Batch Log Exams',
+        err instanceof Error ? err.message : 'Unable to save batch exam entries to server.',
+        'error'
+      );
     }
   };
 
@@ -10750,8 +10775,13 @@ export default function App() {
   };
 
   const handleAdminResetAllToZeroForCycle5 = async () => {
+    if (!isAdminUnlocked && activeMemberId !== 'admin') {
+      notify('Admin Access Required', 'Only the Administrator can reset cycle XP.', 'error');
+      return;
+    }
     const basePath = `artifacts/${appId}/public/data`;
-    const nowTs = Date.now();
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
+    const currentCycleNum = Math.max(5, Number(arenaSettings.currentCycle) || 5);
     const activeList = membersLiveRef.current.length > 0 ? membersLiveRef.current : members;
     try {
       const resetUpdates = {
@@ -10771,25 +10801,15 @@ export default function App() {
         await updateDoc(doc(db, basePath, 'members', m.id), resetUpdates);
       }
 
-      // Also archive/clear any sessions created after CYCLE_5_START_MS so everyone is strictly at 0 XP in Cycle 5
-      const cycle5Sessions = sessions.filter(s => (Number(s.timestamp) || 0) >= CYCLE_5_START_MS);
-      if (cycle5Sessions.length > 0) {
-        setSessions(prev => prev.filter(s => (Number(s.timestamp) || 0) < CYCLE_5_START_MS));
-        for (const s of cycle5Sessions) {
-          await deleteDoc(doc(db, basePath, 'sessions', s.id));
-        }
-      }
-
       const arenaCleanUpdates = {
-        currentCycle: 5,
-        currentCycleStartMs: CYCLE_5_START_MS,
+        currentCycle: currentCycleNum,
+        currentCycleStartMs: nowTs,
         leaderboardHidden: false,
         simulateFridayBlackout: false,
         autoLocked: false,
         hiddenAt: null,
         manualAdminReveal: true,
         revealTimestamp: nowTs,
-        lastAutoLockDate: '2026-11-06',
         scheduledBlackoutUnlockAt: null,
         scheduledBlackoutPreNotified: false,
         raidBossCurrentHp: Number(arenaSettings.raidBossMaxHp) || 3000,
@@ -10803,12 +10823,12 @@ export default function App() {
       handleSetLeaderboardScope('current_week');
       await pushActivity(
         'admin_adjust',
-        '🚀 Admin Reset All Scholars to 0 XP for Cycle 5!',
-        'Cycle 5 Clean Slate active • Blackout disabled • All scholars starting at 0 XP.',
+        `🚀 Admin Reset All Scholars to 0 XP for Cycle ${currentCycleNum}!`,
+        `Cycle ${currentCycleNum} Clean Slate active • Blackout disabled • All scholars starting at 0 XP.`,
         'admin',
         0
       );
-      notify('Cycle 5 Reset Complete! 🚀', 'Every scholar is now at 0 XP for Cycle 5 and Blackout is disabled.');
+      notify(`Cycle ${currentCycleNum} Reset Complete! 🚀`, `Every scholar is now at 0 XP for Cycle ${currentCycleNum} and Blackout is disabled.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `${basePath}/settings/arenaState`);
     }
@@ -10819,14 +10839,9 @@ export default function App() {
       notify('Admin Access Required', 'Only the Administrator can start a new cycle.', 'error');
       return;
     }
-    const currentCycleNum = Number(arenaSettings.currentCycle) || 5;
+    const currentCycleNum = Math.max(5, Number(arenaSettings.currentCycle) || 5);
     const nextCycleNum = overrideTargetCycle || (currentCycleNum + 1);
-    const confirmAction = window.confirm(
-      `🚀 START NEW CYCLE (CYCLE ${nextCycleNum})?\n\nThis will:\n1. Snapshot and archive Cycle ${currentCycleNum}'s final standings and winners into Historical Records.\n2. Play the Kahoot-style winner reveal ceremony.\n3. Broadcast an announcement to all scholars.\n4. Advance active cycle to Cycle ${nextCycleNum} and reset all scholars to 0 XP.\n\nProceed?`
-    );
-    if (!confirmAction) return;
-
-    const nowTs = Date.now();
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
     const basePath = `artifacts/${appId}/public/data`;
 
     try {
@@ -10838,8 +10853,6 @@ export default function App() {
 
       const activeList = membersLiveRef.current.length > 0 ? membersLiveRef.current : members;
       const resetUpdates = {
-        bonusXp: 0,
-        manualMinutesOffset: 0,
         cycle5BonusXp: 0,
         cycle5ManualMinutesOffset: 0,
         unexcusedZero: false,
@@ -10876,7 +10889,7 @@ export default function App() {
         hiddenAt: null,
         manualAdminReveal: true,
         revealTimestamp: nowTs,
-        lastAutoLockDate: new Date().toISOString().split('T')[0],
+        lastAutoLockDate: new Date(nowTs).toISOString().split('T')[0],
         scheduledBlackoutUnlockAt: null,
         scheduledBlackoutPreNotified: false,
         reigningSprintId: sprintRecord.id,
@@ -10894,19 +10907,6 @@ export default function App() {
       const settingsRef = doc(db, basePath, 'settings', 'arenaState');
       await setDoc(settingsRef, newCycleSettings, { merge: true });
 
-      // Send a strictly private notification ONLY to the newly selected weekly sleeper agent
-      fetch('/api/push/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetMemberId: nextSleeperForNewCycle.memberId,
-          title: `🕵️‍♂️ Top Secret: You are Cycle ${nextCycleNum}'s 10% Sleeper Agent!`,
-          body: `The system randomly chose you for Cycle ${nextCycleNum}! Everyone else will only see 10% of your logged study time & study XP (except Exam XP) until Blackout starts to surprise the squad!`,
-          tag: `sleeper-assign-cycle-${nextCycleNum}`,
-          requireInteraction: true
-        })
-      }).catch(() => {});
-
       triggerKahootRevealSequence(sprintRecord.id);
       handleSetLeaderboardScope('current_week');
 
@@ -10919,7 +10919,7 @@ export default function App() {
       );
       notify(
         `🚀 Cycle ${nextCycleNum} Started!`,
-        `Cycle ${currentCycleNum} winner ${sprintRecord.winnerName} crowned & archived! Secret 10% Sleeper Agent rotated to ${nextSleeperForNewCycle.memberName}.`
+        `Cycle ${currentCycleNum} winner ${sprintRecord.winnerName} crowned & archived! All scholars reset to 0 XP for Cycle ${nextCycleNum}.`
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `${basePath}/settings/arenaState`);
@@ -11117,7 +11117,7 @@ export default function App() {
       memberName: s.memberName || 'Scholar',
       sessionType: s.sessionType || 'STUDY',
       subject: s.subject || 'Physics',
-      date: s.date || new Date(s.timestamp || Date.now()).toISOString().split('T')[0],
+      date: s.date || getLocalDateString(new Date(Number(s.timestamp) || Date.now())),
       duration: Number(s.duration) || 60,
       solvedQuestions: solvedVal,
       attemptedQuestions: attemptedVal,
@@ -11366,8 +11366,10 @@ export default function App() {
       return;
     }
 
+    const nowTs = Math.max(Date.now(), getServerSyncedNow());
     const updates = {
       leaderboardHidden: true,
+      hiddenAt: nowTs,
       scheduledBlackoutUnlockAt: targetMs,
       scheduledBlackoutPreNotified: false,
       manualAdminReveal: false
@@ -11544,7 +11546,7 @@ export default function App() {
 
     const updatedFields = {
       subject: editSessionForm.subject || 'Physics',
-      date: editSessionForm.date || new Date().toISOString().split('T')[0],
+      date: editSessionForm.date || getLocalDateString(),
       duration: durationMins,
       questions: totalQuestions,
       solvedQuestions: solvedVal,
@@ -11559,13 +11561,23 @@ export default function App() {
       heldResolvedAt: Date.now()
     };
 
-    // Optimistic UI update
-    setSessions(prev => prev.map(s => (s.id === editingSessionId ? { ...s, ...updatedFields } : s)));
+    const updatedSessionsSnapshot = sessions.map(s => (s.id === editingSessionId ? { ...s, ...updatedFields } : s));
+    setSessions(updatedSessionsSnapshot);
     setEditingSessionId(null);
     setEditSessionForm(null);
 
     try {
       await updateDoc(doc(db, basePath, 'sessions', editingSessionId), updatedFields);
+
+      if (targetMemberId) {
+        const editedMem = membersLiveRef.current.find(m => m.id === targetMemberId) || members.find(m => m.id === targetMemberId);
+        if (editedMem) {
+          const nextStreak = computeMemberStreak(editedMem, updatedSessionsSnapshot.filter(s => s.memberId === targetMemberId));
+          membersLiveRef.current = membersLiveRef.current.map(m => m.id === targetMemberId ? { ...m, streakCount: nextStreak } : m);
+          setMembers(prev => prev.map(m => m.id === targetMemberId ? { ...m, streakCount: nextStreak } : m));
+          await updateDoc(doc(db, basePath, 'members', targetMemberId), { streakCount: nextStreak }).catch(() => {});
+        }
+      }
 
       // Update matching activity log
       const matchAct = activities.find(
@@ -11575,7 +11587,7 @@ export default function App() {
         const actUpdates = {
           xpDelta: finalXp,
           xpEarned: finalXp,
-          detail: `${solvedVal} Qs • -152 Boss HP • +${finalXp} XP`
+          detail: `${solvedVal} Qs • -${durationMins + totalQuestions * 3} Boss HP • +${finalXp} XP`
         };
         setActivities(prev => prev.map(a => a.id === matchAct.id ? { ...a, ...actUpdates } : a));
         await updateDoc(doc(db, basePath, 'activities', matchAct.id), actUpdates).catch(() => {});
@@ -11588,21 +11600,34 @@ export default function App() {
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${basePath}/sessions/${editingSessionId}`);
+      notify('Update Failed', err instanceof Error ? err.message : 'Unable to save session edit.', 'error');
     }
   };
 
   const handleDeleteSession = async (id: string) => {
     const basePath = `artifacts/${appId}/public/data`;
-    setSessions(prev => prev.filter(s => s.id !== id));
+    const deletedSession = sessions.find(s => s.id === id);
+    const remainingSessions = sessions.filter(s => s.id !== id);
+    setSessions(remainingSessions);
     if (editingSessionId === id) {
       setEditingSessionId(null);
       setEditSessionForm(null);
     }
     try {
       await deleteDoc(doc(db, basePath, 'sessions', id));
+      if (deletedSession?.memberId) {
+        const affectedMem = membersLiveRef.current.find(m => m.id === deletedSession.memberId) || members.find(m => m.id === deletedSession.memberId);
+        if (affectedMem) {
+          const recalcStreak = computeMemberStreak(affectedMem, remainingSessions.filter(s => s.memberId === affectedMem.id));
+          membersLiveRef.current = membersLiveRef.current.map(m => m.id === affectedMem.id ? { ...m, streakCount: recalcStreak } : m);
+          setMembers(prev => prev.map(m => m.id === affectedMem.id ? { ...m, streakCount: recalcStreak } : m));
+          await updateDoc(doc(db, basePath, 'members', affectedMem.id), { streakCount: recalcStreak }).catch(() => {});
+        }
+      }
       notify('Study Log Deleted', 'Removed study session from history.');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `${basePath}/sessions/${id}`);
+      notify('Delete Failed', err instanceof Error ? err.message : 'Unable to delete session.', 'error');
     }
   };
 
@@ -11623,7 +11648,7 @@ export default function App() {
       memberName: ex.memberName || 'Scholar',
       title: ex.title || '',
       examType: ex.examType || 'JEE Mains',
-      date: ex.date || new Date(ex.timestamp || Date.now()).toISOString().split('T')[0],
+      date: ex.date || getLocalDateString(new Date(Number(ex.timestamp) || Date.now())),
       institute: ex.institute || 'Modulus',
       overallMarks: Number(ex.overallMarks) || 0,
       overallMaxMarks: Number(ex.overallMaxMarks) || 300,
@@ -11667,7 +11692,7 @@ export default function App() {
     const updatedExamFields = {
       title: (editExamForm.title || 'Mock Test').trim(),
       examType: editExamForm.examType || 'JEE Mains',
-      date: editExamForm.date || new Date().toISOString().split('T')[0],
+      date: editExamForm.date || getLocalDateString(),
       institute: (editExamForm.institute || 'Modulus').trim(),
       overallMarks: Number(editExamForm.overallMarks) || 0,
       overallMaxMarks: Number(editExamForm.overallMaxMarks) || 300,
@@ -11967,11 +11992,9 @@ export default function App() {
       setActiveTab(target.tab);
     }
     if (target.action === 'open_log') {
-      setLogTargetMember(currentMember?.id || members[0]?.id || '');
-      setShowLogModal(true);
+      openLogSessionModal(currentMember?.id || members[0]?.id || '');
     } else if (target.action === 'open_exam') {
-      setExamMemberId(currentMember?.id || members[0]?.id || '');
-      setShowExamModal(true);
+      openLogExamModal(currentMember?.id || members[0]?.id || '');
     } else if (target.action === 'open_warfare') {
       setActiveTab('arena');
       setArenaActiveDrawer('warfare');
@@ -12663,16 +12686,19 @@ export default function App() {
               </div>
             )}
 
-            {currentMember && activeMemberId !== 'admin' && (
-              <div className="hidden group-hover/sidebar:flex pt-1.5 border-t border-white/[0.07] items-center justify-between text-[10px]">
-                <span className="font-medium text-slate-300">
-                  {currentMember.streakCount || 1}d Consistency
-                </span>
-                <span className="font-mono-num text-emerald-400 font-semibold">
-                  +{Math.round((getStreakMultiplier(currentMember.streakCount || 1) - 1) * 100)}% Yield
-                </span>
-              </div>
-            )}
+            {currentMember && activeMemberId !== 'admin' && (() => {
+              const displayStreak = currentScholarStats?.streakCount ?? computeMemberStreak(currentMember, sessions);
+              return (
+                <div className="hidden group-hover/sidebar:flex pt-1.5 border-t border-white/[0.07] items-center justify-between text-[10px]">
+                  <span className="font-medium text-slate-300">
+                    {displayStreak}d Consistency
+                  </span>
+                  <span className="font-mono-num text-emerald-400 font-semibold">
+                    +{Math.round((getStreakMultiplier(displayStreak) - 1) * 100)}% Yield
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Primary Navigation */}
@@ -12769,10 +12795,7 @@ export default function App() {
           <button
             type="button"
             title="Log Session"
-            onClick={() => {
-              setLogTargetMember(currentMember ? currentMember.id : (members[0]?.id || (isGuestMode ? '' : 'sai')));
-              setShowLogModal(true);
-            }}
+            onClick={() => openLogSessionModal()}
             className="btn-primary w-full h-10 group-hover/sidebar:h-auto group-hover/sidebar:py-2.5 group-hover/sidebar:px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5] shrink-0" />
@@ -12929,10 +12952,7 @@ export default function App() {
 
               {/* Primary + Log Session CTA */}
               <button
-                onClick={() => {
-                  setLogTargetMember(currentMember ? currentMember.id : (members[0]?.id || (isGuestMode ? '' : 'sai')));
-                  setShowLogModal(true);
-                }}
+                onClick={() => openLogSessionModal()}
                 className="btn-primary h-10 sm:h-9 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -13019,10 +13039,7 @@ export default function App() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => {
-                            setExamMemberId(currentMember ? currentMember.id : (members[0]?.id || 'sai'));
-                            setShowExamModal(true);
-                          }}
+                          onClick={() => openLogExamModal()}
                           className="p-2.5 rounded-xl bg-sky-500/15 border border-sky-400/35 text-left flex items-center gap-2 text-sky-200 font-bold text-xs cursor-pointer"
                         >
                           <Trophy className="w-4 h-4 text-sky-400 shrink-0" />
@@ -13062,10 +13079,7 @@ export default function App() {
                     </div>
 
                     <button
-                      onClick={() => {
-                        setExamMemberId(currentMember ? currentMember.id : (members[0]?.id || 'sai'));
-                        setShowExamModal(true);
-                      }}
+                      onClick={() => openLogExamModal()}
                       className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-white/[0.08] text-sky-300 font-medium flex items-center justify-between transition-all cursor-pointer"
                     >
                       <span className="flex items-center gap-2">
@@ -13456,10 +13470,7 @@ export default function App() {
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setExamMemberId(currentMember ? currentMember.id : (members[0]?.id || 'sai'));
-                      setShowExamModal(true);
-                    }}
+                    onClick={() => openLogExamModal()}
                     className="min-h-[36px] px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-semibold text-white flex items-center gap-1.5 transition-all cursor-pointer shrink-0 whitespace-nowrap"
                   >
                     <Trophy className="w-3.5 h-3.5 text-sky-400 shrink-0" />
@@ -13512,8 +13523,15 @@ export default function App() {
               <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
                   {([
-                    { id: 'current_week' as const, label: isCycle5Active ? 'Cycle 5' : 'Active', mobileLabel: 'C5' },
-                    ...(isCycle5Active ? [{ id: 'cycle_4' as const, label: 'Cycle 4', mobileLabel: 'C4' }] : []),
+                    {
+                      id: 'current_week' as const,
+                      label: `Cycle ${Math.max(5, Number(arenaSettings.currentCycle) || 5)}`,
+                      mobileLabel: `C${Math.max(5, Number(arenaSettings.currentCycle) || 5)}`
+                    },
+                    ...((Number(arenaSettings.currentCycle) || 5) > 5
+                      ? [{ id: 'cycle_5' as const, label: 'Cycle 5', mobileLabel: 'C5' }]
+                      : []),
+                    { id: 'cycle_4' as const, label: 'Cycle 4', mobileLabel: 'C4' },
                     { id: 'cycle_3' as const, label: 'Cycle 3', mobileLabel: 'C3' },
                     { id: 'cycle_2' as const, label: 'Cycle 2', mobileLabel: 'C2' },
                     { id: 'prev_week' as const, label: 'Cycle 1', mobileLabel: 'C1' },
@@ -14028,7 +14046,7 @@ export default function App() {
                 )}
 
                 {/* COMPACT 1-LINE SLEEPER AGENT BAR (Strictly visible ONLY to the chosen scholar & Admin) */}
-                {canViewerSeeTrueSleeperStats && leaderboardScope === 'current_week' && (() => {
+                {isSleeperDecoyActiveNow && canViewerSeeTrueSleeperStats && leaderboardScope === 'current_week' && (() => {
                   const sleeperStat = leaderboardStats.find(s => s.id === activeSleeperMemberId);
                   if (!sleeperStat) return null;
                   const sleeperTrueRank = Math.max(1, leaderboardStats.findIndex(s => s.id === activeSleeperMemberId) + 1);
@@ -14201,7 +14219,7 @@ export default function App() {
                                   <span className="text-slate-300 font-medium">{m.institute}</span>
                                   <span>·</span>
                                   <span className="text-sky-300 font-mono-num font-semibold">
-                                    {m.streakCount || 1}d streak
+                                    {m.streakCount ?? 0}d streak
                                   </span>
                                   <span>·</span>
                                   <span className="truncate text-slate-400">{activeTitle}</span>
@@ -14400,7 +14418,7 @@ export default function App() {
                     </h3>
                   </div>
                   <button
-                    onClick={() => setShowLogModal(true)}
+                    onClick={() => openLogSessionModal()}
                     className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -14944,7 +14962,7 @@ export default function App() {
                   <div className="p-2.5 rounded-2xl bg-black/40 border border-white/[0.07] text-center">
                     <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Streak Rate</div>
                     <div className="text-sm font-bold text-emerald-400 font-mono-num mt-0.5">
-                      {getStreakMultiplier(currentMember?.streakCount || 1).toFixed(2)}x
+                      {getStreakMultiplier(currentScholarStats?.streakCount ?? currentMember?.streakCount ?? 0).toFixed(2)}x
                     </div>
                   </div>
                 </div>
@@ -15145,7 +15163,7 @@ export default function App() {
                       </p>
                     </div>
                     <button
-                      onClick={() => setShowLogModal(true)}
+                      onClick={() => openLogSessionModal()}
                       className="btn-primary px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -16790,7 +16808,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowExamModal(true)}
+                  onClick={() => openLogExamModal()}
                   className="btn-primary min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md"
                 >
                   <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -17322,10 +17340,7 @@ export default function App() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              setExamMemberId(targetMem?.id || personalInspectMember);
-                              setShowExamModal(true);
-                            }}
+                            onClick={() => openLogExamModal(targetMem?.id || personalInspectMember)}
                             className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -17497,10 +17512,7 @@ export default function App() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              setLogTargetMember(targetMem?.id || personalInspectMember);
-                              setShowLogModal(true);
-                            }}
+                            onClick={() => openLogSessionModal(targetMem?.id || personalInspectMember)}
                             className="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 text-sky-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -17941,7 +17953,7 @@ export default function App() {
                     className="px-2.5 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/35 text-cyan-300 text-[11px] font-bold cursor-pointer flex items-center gap-1"
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    <span>🔄 Reset All to 0 (Cycle 5)</span>
+                    <span>🔄 Reset All to 0 (Cycle {arenaSettings.currentCycle || 5})</span>
                   </button>
                   <button
                     type="button"
@@ -18486,7 +18498,7 @@ export default function App() {
                         className="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Zap className="w-3.5 h-3.5" />
-                        <span>Reset Everyone to 0 XP (Cycle 5)</span>
+                        <span>Reset Everyone to 0 XP (Cycle {arenaSettings.currentCycle || 5})</span>
                       </button>
                       <button
                         type="button"
@@ -21042,6 +21054,42 @@ export default function App() {
             </div>
 
             <form onSubmit={handleSaveSession} className="space-y-4">
+              {/* Scholar Target (for Admin) & Session Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(isAdminUnlocked || activeMemberId === 'admin') ? (
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1 font-medium">Scholar</label>
+                    <select
+                      value={logTargetMember || members[0]?.id || 'sai'}
+                      onChange={(e) => setLogTargetMember(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-semibold"
+                    >
+                      {members.filter(m => !m.isArchived).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.institute})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="px-2.5 py-1.5 rounded-xl bg-zinc-900/70 border border-zinc-800 flex items-center justify-between text-xs">
+                    <span className="text-zinc-400">Scholar</span>
+                    <span className="font-bold text-white truncate">{currentMember?.name || 'Active Scholar'}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[10px] text-zinc-400 block mb-1 font-medium">Session Date</label>
+                  <input
+                    type="date"
+                    max={getLocalDateString()}
+                    value={logDate}
+                    onChange={(e) => setLogDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono-num"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div className="grid grid-cols-2 gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
                   <button
@@ -21123,6 +21171,12 @@ export default function App() {
                         className="w-full mt-0.5 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white"
                       />
                     </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] pt-0.5">
+                    <span className="text-zinc-400">Calculated duration:</span>
+                    <span className={`font-mono-num font-bold ${Number(logDuration) > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {Number(logDuration) > 0 ? `${formatDuration(Number(logDuration))} (${Number(logDuration)} mins)` : 'Adjust Start / End times'}
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -21712,13 +21766,159 @@ export default function App() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
           <div className="w-full max-w-md surface-card rounded-3xl p-4 sm:p-5 space-y-4 my-auto max-h-[92vh] overflow-y-auto animate-modal">
             <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-              <h3 className="text-sm font-bold text-white font-display">Log Weekly Exam Result</h3>
-              <button onClick={() => setShowExamModal(false)} className="text-zinc-500 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
+              <h3 className="text-sm font-bold text-white font-display">Log Mock Exam Result</h3>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setExamEntryMode('single')}
+                    className={`px-2 py-1 rounded-md font-bold cursor-pointer ${examEntryMode === 'single' ? 'bg-amber-400 text-zinc-950' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Single
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExamEntryMode('batch')}
+                    className={`px-2 py-1 rounded-md font-bold cursor-pointer ${examEntryMode === 'batch' ? 'bg-amber-400 text-zinc-950' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Batch
+                  </button>
+                </div>
+                <button type="button" onClick={() => setShowExamModal(false)} className="text-zinc-500 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
+            {examEntryMode === 'batch' ? (
+              <form onSubmit={handleBatchSaveExams} className="space-y-3">
+                {(isAdminUnlocked || activeMemberId === 'admin') && (
+                  <div>
+                    <label className="text-[10px] text-zinc-400 block mb-1 font-medium">Scholar</label>
+                    <select
+                      value={examMemberId || members[0]?.id || 'sai'}
+                      onChange={(e) => setExamMemberId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-semibold"
+                    >
+                      {members.filter(m => !m.isArchived).map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.institute})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+                  {batchExamEntries.map((row, idx) => (
+                    <div key={row.id} className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-amber-300">Test #{idx + 1}</span>
+                        {batchExamEntries.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setBatchExamEntries(prev => prev.filter(item => item.id !== row.id))}
+                            className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <select
+                          value={row.examType}
+                          onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, examType: e.target.value } : item))}
+                          className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white"
+                        >
+                          {Object.keys(EXAM_TEMPLATES).map(k => <option key={k} value={k}>{k}</option>)}
+                        </select>
+                        <input
+                          type="date"
+                          value={row.date}
+                          onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, date: e.target.value } : item))}
+                          className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white font-mono-num"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Test Title"
+                        value={row.title}
+                        onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, title: e.target.value } : item))}
+                        className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white"
+                      />
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <input
+                          type="number"
+                          placeholder="Score"
+                          value={row.overallMarks}
+                          onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, overallMarks: e.target.value } : item))}
+                          className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono-num"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          value={row.overallMaxMarks}
+                          onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, overallMaxMarks: e.target.value } : item))}
+                          className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono-num"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Rank"
+                          value={row.overallRank}
+                          onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, overallRank: e.target.value } : item))}
+                          className="px-2 py-1 rounded-lg bg-zinc-900 border border-amber-500/40 text-amber-300 font-mono-num font-bold"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Batch"
+                          value={row.totalStudents}
+                          onChange={(e) => setBatchExamEntries(prev => prev.map(item => item.id === row.id ? { ...item, totalStudents: e.target.value } : item))}
+                          className="px-2 py-1 rounded-lg bg-zinc-900 border border-amber-500/40 text-white font-mono-num font-bold"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setBatchExamEntries(prev => [
+                    ...prev,
+                    {
+                      id: `batch_${Date.now()}`,
+                      examType: 'JEE Mains',
+                      title: `Mock Test ${prev.length + 1}`,
+                      date: getLocalDateString(),
+                      overallMarks: '',
+                      overallMaxMarks: '300',
+                      overallRank: '',
+                      totalStudents: ''
+                    }
+                  ])}
+                  className="w-full py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-zinc-200 cursor-pointer"
+                >
+                  + Add Another Test Row
+                </button>
+
+                <button type="submit" className="btn-primary w-full py-2.5 rounded-xl font-semibold text-xs shadow-md cursor-pointer">
+                  Save Batch Exams
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSaveExam} className="space-y-3">
+              {(isAdminUnlocked || activeMemberId === 'admin') && (
+                <div>
+                  <label className="text-[10px] text-zinc-400 block mb-1 font-medium">Scholar</label>
+                  <select
+                    value={examMemberId || members[0]?.id || 'sai'}
+                    onChange={(e) => setExamMemberId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-semibold"
+                  >
+                    {members.filter(m => !m.isArchived).map((m) => (
+                      <option key={m.id} value={m.id}>{m.name} ({m.institute})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <select
                   value={examType}
@@ -21730,13 +21930,21 @@ export default function App() {
                   ))}
                 </select>
                 <input
-                  type="text"
-                  placeholder="Test Name"
-                  value={examTitle}
-                  onChange={(e) => setExamTitle(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white"
+                  type="date"
+                  max={getLocalDateString()}
+                  value={examDate}
+                  onChange={(e) => setExamDate(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white font-mono-num"
                 />
               </div>
+
+              <input
+                type="text"
+                placeholder="Test Name (e.g. AITS Grand Test 4)"
+                value={examTitle}
+                onChange={(e) => setExamTitle(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white"
+              />
 
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
@@ -21942,9 +22150,10 @@ export default function App() {
               })()}
 
               <button type="submit" className="btn-primary w-full py-2.5 rounded-xl font-semibold text-xs shadow-md">
-                Save & Run AI Diagnostic
+                Save &amp; Run AI Diagnostic
               </button>
             </form>
+            )}
           </div>
         </div>
       )}
@@ -24914,10 +25123,7 @@ export default function App() {
           setActiveTab('timer');
           startOrResumeLiveTimer();
         }}
-        onOpenLogSessionModal={() => {
-          setLogTargetMember(currentMember ? currentMember.id : (members[0]?.id || 'sai'));
-          setShowLogModal(true);
-        }}
+        onOpenLogSessionModal={() => openLogSessionModal(currentMember ? currentMember.id : (members[0]?.id || 'sai'))}
         onOpenCombinedStudyRoom={() => {
           setShowCombinedStudyModal(true);
           setIsCombinedStudyMinimized(false);

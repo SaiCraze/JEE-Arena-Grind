@@ -137,6 +137,7 @@ interface RaidBossProps {
   claimedBossKeys?: string[];
   currentUserId?: string;
   myPersonalXp?: number;
+  bossVictoryStreak?: number;
 }
 
 export const RaidBossArena: React.FC<RaidBossProps> = ({
@@ -158,6 +159,7 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
   claimedBossKeys = [],
   currentUserId,
   myPersonalXp = 0,
+  bossVictoryStreak,
 }) => {
   const [isAttacking, setIsAttacking] = useState(false);
   const [floatingDamage, setFloatingDamage] = useState<number | null>(null);
@@ -222,6 +224,10 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
   const hpPercent = Math.max(0, Math.min(100, (currentHp / Math.max(1, maxHp)) * 100));
   const isDefeated = !isBlackoutSealed && rawCurrentHp <= 0;
   const isEnraged = !isBlackoutSealed && !isDefeated && hpPercent <= 35;
+  const resolvedVictoryStreak = Math.max(
+    isDefeated ? 1 : 0,
+    Number(bossVictoryStreak ?? bossState?.defeatedCount ?? 0) || 0
+  );
 
   const bossKey = `${bossState?.weekId || 'week'}_lvl_${currentLevel}_${activeBossDef.id}`;
   const hasClaimedVictory = claimedBossKeys.includes(bossKey);
@@ -276,31 +282,33 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
   const userContributed = Boolean(currentUserId && myDamage > 0);
 
   return (
-    <div className="relative w-full rounded-3xl overflow-hidden surface-card p-4 sm:p-7 mb-4 sm:mb-6 transition-all duration-500">
-      {/* Subtle Top Rim Reflection */}
+    <div className="relative w-full rounded-xl overflow-hidden box-arena-panel p-4 sm:p-6 mb-4 sm:mb-6 transition-all duration-300">
+      {/* Top Rim Accent Line */}
       <div
-        className="absolute -top-36 left-1/2 -translate-x-1/2 w-[540px] h-52 rounded-full blur-[110px] opacity-25 pointer-events-none transition-colors duration-700"
+        className="absolute top-0 inset-x-0 h-[2px] opacity-80 pointer-events-none"
         style={{ background: isDefeated ? '#10b981' : activeBossDef.accentColor }}
       />
 
       {/* Top Executive Telemetry Strip */}
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 pb-3.5 sm:pb-4 mb-4 sm:mb-5 border-b border-white/[0.07]">
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-[10px] font-mono font-semibold uppercase tracking-[0.14em] bg-white/[0.05] text-zinc-200 border border-white/10">
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 pb-3.5 sm:pb-4 mb-4 sm:mb-5 border-b border-white/[0.08]">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-[0.14em] bg-white/[0.04] text-zinc-100 border border-white/10">
             <ShieldAlert className="w-3.5 h-3.5 text-sky-400" />
-            CO-OP RAID TELEMETRY • TIER {currentLevel}
-          </span>
+            <span>CO-OP RAID - TIER {currentLevel}</span>
+          </div>
 
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider bg-white/[0.03] text-zinc-400 border border-white/[0.07]">
-            <Crosshair className="w-3 h-3 text-emerald-400" />
-            {activeBossDef.weakness}
-          </span>
+          {!isBlackoutSealed && resolvedVictoryStreak > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-400/35">
+              <Trophy className="w-3 h-3 text-amber-400" />
+              <span>VICTORY STREAK x{resolvedVictoryStreak}</span>
+            </div>
+          )}
 
           {isEnraged && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider bg-rose-500/15 text-rose-300 border border-rose-500/30 animate-pulse">
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider bg-rose-500/15 text-rose-300 border border-rose-500/35">
               <Flame className="w-3 h-3" />
-              CRITICAL PHASE (&lt;35% HP)
-            </span>
+              <span>CRITICAL PHASE (&lt;35% HP)</span>
+            </div>
           )}
         </div>
 
@@ -308,18 +316,18 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
           {isAdmin && onOpenAdminBossControls && (
             <button
               onClick={onOpenAdminBossControls}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[10px] font-mono uppercase tracking-wider text-sky-300 transition-colors cursor-pointer"
+              className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/15 text-[10px] font-mono font-semibold uppercase tracking-wider text-sky-300 transition-colors cursor-pointer"
             >
-              <Shield className="w-3 h-3" />
+              <Shield className="w-3.5 h-3.5" />
               Configure Boss
             </button>
           )}
           <button
             onClick={() => setShowRosterModal(!showRosterModal)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[10px] font-mono uppercase tracking-wider text-zinc-300 transition-colors cursor-pointer"
+            className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/15 text-[10px] font-mono font-semibold uppercase tracking-wider text-zinc-200 transition-colors cursor-pointer"
           >
-            <Award className="w-3 h-3 text-sky-400" />
-            {showRosterModal ? 'Hide Boss Matrix' : 'Boss Roster (5)'}
+            <Award className="w-3.5 h-3.5 text-amber-400" />
+            {showRosterModal ? 'Hide Matrix' : 'Boss Roster (5)'}
           </button>
         </div>
       </div>
@@ -333,27 +341,31 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden mb-5 sm:mb-6"
           >
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-black/50 border border-white/[0.07] grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-black/55 border border-white/[0.09] grid grid-cols-1 sm:grid-cols-5 gap-2.5">
               {RAID_BOSS_ROSTER.map((b, idx) => {
                 const isCurrent = b.id === activeBossDef.id;
                 return (
                   <div
                     key={b.id}
-                    className={`p-3 rounded-xl border transition-all ${
+                    className={`p-3 rounded-lg border transition-all ${
                       isCurrent
-                        ? 'bg-white/[0.06] border-white/25 shadow-lg'
-                        : 'bg-white/[0.015] border-white/[0.05] opacity-65'
+                        ? 'bg-white/[0.06] border-amber-400/45 shadow-lg'
+                        : 'bg-white/[0.015] border-white/[0.06] opacity-70'
                     }`}
                   >
                     <div className="flex items-center justify-between text-[9px] font-mono uppercase tracking-widest text-zinc-400 mb-1">
-                      <span>STAGE 0{idx + 1}</span>
-                      {isCurrent && <span className="text-emerald-400 font-bold">ACTIVE</span>}
+                      <span>TIER 0{idx + 1}</span>
+                      {isCurrent && (
+                        <span className={isDefeated ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                          {isDefeated ? 'DEFEATED' : 'ACTIVE'}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs font-display font-bold text-white truncate">{b.name}</div>
-                    <div className="text-[10px] font-mono text-zinc-400 mt-1">
+                    <div className="text-[10px] font-mono tabular-nums text-zinc-400 mt-1">
                       Base: {b.baseHp.toLocaleString()} HP
                     </div>
-                    <div className="text-[10px] font-mono text-sky-400 mt-0.5">
+                    <div className="text-[10px] font-mono tabular-nums text-sky-400 mt-0.5">
                       Bounty: +{b.rewardXp} XP
                     </div>
                   </div>
@@ -368,7 +380,7 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-center">
         {/* Left 5 Columns: High-Craft Animated SVG Boss Core Stage */}
         <div className="lg:col-span-5 flex flex-col items-center justify-center">
-          <div className="relative w-full max-w-[240px] sm:max-w-[300px] aspect-square rounded-3xl bg-gradient-to-b from-white/[0.04] via-zinc-950/90 to-black/95 border border-white/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_25px_60px_rgba(0,0,0,0.85)] flex items-center justify-center p-3 sm:p-4 overflow-hidden group">
+          <div className="relative w-full max-w-[240px] sm:max-w-[300px] aspect-square rounded-xl bg-gradient-to-b from-white/[0.03] via-zinc-950/90 to-black/95 border border-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_50px_rgba(0,0,0,0.85)] flex items-center justify-center p-3 sm:p-4 overflow-hidden group">
             {/* Subtle Diagnostic Grid Lines */}
             <div
               className="absolute inset-0 opacity-20 pointer-events-none"
@@ -385,18 +397,18 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
             <div className="absolute bottom-3 left-3 w-4 h-4 border-b border-l border-white/25 pointer-events-none" />
             <div className="absolute bottom-3 right-3 w-4 h-4 border-b border-r border-white/25 pointer-events-none" />
 
-            {/* Top Left Chamber Telemetry Label */}
-            <div className="absolute top-3 left-3.5 flex items-center gap-1.5 text-[8.5px] sm:text-[9px] font-mono uppercase tracking-[0.18em] text-zinc-400">
+            {/* Top Left Chamber Telemetry Label (Static Clean State) */}
+            <div className="absolute top-3 left-3.5 flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.16em] text-zinc-300">
               <span
-                className="w-1.5 h-1.5 rounded-full animate-ping"
+                className="w-2 h-2 rounded-[2px]"
                 style={{ backgroundColor: isDefeated ? '#10b981' : activeBossDef.accentColor }}
               />
-              {isDefeated ? 'CORE NEUTRALIZED' : isEnraged ? 'OVERDRIVE RESONANCE' : 'ENTITY LOCKED'}
+              {isDefeated ? 'DEFEATED - 0 HP' : isEnraged ? 'CRITICAL PHASE' : 'TARGET LOCKED'}
             </div>
 
             {/* Bottom Right Integrity Readout */}
-            <div className="absolute bottom-3 right-3.5 text-[9.5px] sm:text-[10px] font-mono font-bold tracking-wider text-zinc-300 bg-black/60 px-2.5 py-0.5 rounded-full border border-white/10">
-              {isBlackoutSealed ? `YOUR DMG: ${myDamage.toLocaleString()}` : `${hpPercent.toFixed(1)}% INTEGRITY`}
+            <div className="absolute bottom-3 right-3.5 text-[10px] font-mono tabular-nums font-bold tracking-wider text-zinc-200 bg-black/75 px-2.5 py-0.5 rounded-md border border-white/15">
+              {isBlackoutSealed ? `YOUR DMG: ${myDamage.toLocaleString()}` : `${hpPercent.toFixed(1)}% HP`}
             </div>
 
             {/* Floating Damage Popover */}
@@ -406,9 +418,9 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                   initial={{ opacity: 0, y: 12, scale: 0.7 }}
                   animate={{ opacity: 1, y: -38, scale: 1.25 }}
                   exit={{ opacity: 0, y: -64, scale: 0.9 }}
-                  className="absolute z-30 px-3.5 py-1.5 rounded-full bg-rose-500/90 text-white font-mono font-black text-base tracking-tight shadow-[0_0_30px_rgba(244,63,94,0.8)] border border-white/40 pointer-events-none"
+                  className="absolute z-30 px-3.5 py-1.5 rounded-lg bg-rose-500 text-white font-mono tabular-nums font-black text-base tracking-tight shadow-[0_0_25px_rgba(244,63,94,0.75)] border border-white/40 pointer-events-none"
                 >
-                  -{floatingDamage} HP!
+                  -{floatingDamage} HP
                 </motion.div>
               )}
             </AnimatePresence>
@@ -754,10 +766,10 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
             </p>
           </div>
 
-          {/* Segmented Liquid-Glass Health Bar */}
-          <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] space-y-2.5">
+          {/* Segmented Boxy Health Bar */}
+          <div className="p-4 rounded-xl bg-black/50 border border-white/[0.09] space-y-2.5">
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
                 {isBlackoutSealed ? (
                   <>
                     <Lock className="w-3.5 h-3.5 text-rose-400" />
@@ -770,7 +782,7 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                   </>
                 )}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 font-mono tabular-nums">
                 {isBlackoutSealed ? (
                   <>
                     <span className="text-emerald-400 font-bold text-sm">
@@ -780,21 +792,21 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                   </>
                 ) : (
                   <>
-                    <span className="text-white font-bold text-sm">
+                    <span className={`font-bold text-sm ${isDefeated ? 'text-emerald-400' : 'text-white'}`}>
                       {currentHp.toLocaleString()}
                     </span>
-                    <span className="text-zinc-500">/ {maxHp.toLocaleString()} HP</span>
+                    <span className="text-zinc-400">/ {maxHp.toLocaleString()} HP</span>
                   </>
                 )}
               </div>
             </div>
 
-            <div className="relative w-full h-3.5 rounded-full bg-zinc-950 overflow-hidden p-0.5 border border-white/10">
+            <div className="relative w-full h-3.5 rounded-md bg-zinc-950 overflow-hidden p-0.5 border border-white/15">
               <motion.div
                 initial={{ width: '100%' }}
                 animate={{ width: `${hpPercent}%` }}
                 transition={{ type: 'spring', bounce: 0.15, duration: 0.8 }}
-                className="h-full rounded-full relative overflow-hidden"
+                className="h-full rounded-sm relative overflow-hidden"
                 style={{
                   background: isDefeated
                     ? '#10b981'
@@ -807,10 +819,14 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-mono text-zinc-400">
               <div className="flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-sky-400" />
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
                 {isBlackoutSealed ? (
                   <span>
-                    Blackout Active: <strong className="text-zinc-200">Only your personal damage ({myDamage.toLocaleString()} DMG) is visible</strong>
+                    Blackout Active: <strong className="text-zinc-200">Personal strike total ({myDamage.toLocaleString()} DMG)</strong>
+                  </span>
+                ) : isDefeated ? (
+                  <span className="text-emerald-300 font-semibold">
+                    Boss defeated at 0 HP. Waiting for Admin to spawn next tier.
                   </span>
                 ) : latestAttackerName ? (
                   <span>
@@ -818,25 +834,26 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                     <span className="text-emerald-400 font-semibold">(-{latestDamageVal || 0} HP)</span>
                   </span>
                 ) : (
-                  <span>Log a study block or problem set to deal direct kinetic damage</span>
+                  <span>Log a focus block or solved set to deal kinetic damage</span>
                 )}
               </div>
-              <span className="text-zinc-400">
-                1 Min = <strong className="text-zinc-200">1 DMG</strong> • 1 Solved Q = <strong className="text-zinc-200">3 DMG</strong>
+              <span className="text-zinc-400 flex items-center gap-1.5">
+                <Crosshair className="w-3 h-3 text-emerald-400" />
+                1 Min = <strong className="text-zinc-200">1 DMG</strong> · 1 Q = <strong className="text-zinc-200">3 DMG</strong>
               </span>
             </div>
           </div>
 
           {/* Squad Damage Leaderboard Strip */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.18em] text-zinc-400">
-              <span>{isBlackoutSealed ? 'PERSONAL STRIKE TELEMETRY (BLACKOUT)' : 'SQUAD STRIKE TELEMETRY'}</span>
-              <span>MVP BOUNTY: &ldquo;{activeBossDef.rewardTitle}&rdquo;</span>
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-400">
+              <span>{isBlackoutSealed ? 'PERSONAL STRIKE TELEMETRY' : 'TOP STRIKERS'}</span>
+              <span className="text-amber-300">MVP BOUNTY: &ldquo;{activeBossDef.rewardTitle}&rdquo;</span>
             </div>
 
             {isBlackoutSealed ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div className="p-3 rounded-xl border bg-gradient-to-br from-sky-500/12 via-indigo-500/5 to-transparent border-sky-400/35 flex flex-col justify-between">
+                <div className="p-3 rounded-lg border bg-sky-500/10 border-sky-400/35 flex flex-col justify-between">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base leading-none">{myContribution?.avatar || '⚡'}</span>
@@ -845,10 +862,10 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                       </span>
                     </div>
                     <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-sky-500/20 text-sky-300 border border-sky-400/30 shrink-0">
-                      YOUR STATS ONLY
+                      YOUR STATS
                     </span>
                   </div>
-                  <div className="flex items-baseline justify-between font-mono">
+                  <div className="flex items-baseline justify-between font-mono tabular-nums">
                     <span className="text-xs font-bold text-amber-300">
                       {myPersonalXp.toLocaleString()} XP
                     </span>
@@ -858,14 +875,14 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl border bg-white/[0.02] border-rose-500/25 flex items-center gap-2.5 text-xs text-zinc-400 font-mono">
+                <div className="p-3 rounded-lg border bg-white/[0.02] border-rose-500/30 flex items-center gap-2.5 text-xs text-zinc-300 font-mono">
                   <Lock className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>All other squadmates&apos; boss damage, XP gains &amp; analytics are locked until the Admin reveals the standings.</span>
+                  <span>Rival Boss damage &amp; standings are sealed during Blackout.</span>
                 </div>
               </div>
             ) : sortedContributors.length === 0 ? (
-              <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs text-zinc-400 font-mono text-center">
-                No strikes recorded against this tier yet. First operative to log focus claims early MVP lead.
+              <div className="p-3.5 rounded-lg bg-white/[0.02] border border-white/[0.08] text-xs text-zinc-400 font-mono text-center">
+                No strikes recorded against this tier yet. First scholar to log focus claims early MVP lead.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -875,10 +892,10 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                   return (
                     <div
                       key={contributor.id}
-                      className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
+                      className={`p-3 rounded-lg border flex flex-col justify-between transition-all ${
                         isMvp
-                          ? 'bg-gradient-to-br from-sky-500/12 via-indigo-500/5 to-transparent border-sky-400/35 shadow-[0_8px_25px_rgba(56,189,248,0.12)]'
-                          : 'bg-white/[0.025] border-white/[0.07]'
+                          ? 'bg-amber-500/10 border-amber-400/45 shadow-[0_8px_25px_rgba(245,158,11,0.14)]'
+                          : 'bg-white/[0.025] border-white/[0.08]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-2">
@@ -889,12 +906,12 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                           </span>
                         </div>
                         {isMvp && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-sky-500/20 text-sky-300 border border-sky-400/30 shrink-0">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-amber-400 text-zinc-950 shrink-0">
                             MVP #1
                           </span>
                         )}
                       </div>
-                      <div className="flex items-baseline justify-between font-mono">
+                      <div className="flex items-baseline justify-between font-mono tabular-nums">
                         <span className="text-xs font-bold text-emerald-400">
                           {contributor.damage.toLocaleString()} DMG
                         </span>
@@ -912,18 +929,18 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-3"
+              className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/35 flex flex-col sm:flex-row items-center justify-between gap-3"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0">
                   <Trophy className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="text-xs font-mono uppercase tracking-wider text-emerald-300 font-bold">
-                    TIER {currentLevel} BOSS VANQUISHED
+                    DEFEATED - 0 HP (TIER {currentLevel} VANQUISHED)
                   </div>
-                  <div className="text-xs text-zinc-300">
-                    Squad Victory Bounty: <strong className="text-white">+{activeBossDef.rewardXp} XP</strong>
+                  <div className="text-xs text-zinc-200">
+                    Squad Victory Bounty: <strong className="text-amber-300">+{activeBossDef.rewardXp} XP</strong>
                     {isCurrentUserMvp && (
                       <span className="ml-1.5 text-sky-300 font-semibold">
                         + MVP Title &ldquo;{activeBossDef.rewardTitle}&rdquo;
@@ -943,7 +960,7 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                         isCurrentUserMvp ? activeBossDef.rewardTitle : undefined
                       )
                     }
-                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-zinc-950 font-display font-bold text-xs transition-all shadow-lg"
+                    className="flex-1 sm:flex-initial min-h-[42px] inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-zinc-950 font-display font-bold text-xs transition-all shadow-lg cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     Claim +{activeBossDef.rewardXp} XP
@@ -951,7 +968,7 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                 )}
 
                 {hasClaimedVictory && (
-                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono font-semibold">
+                  <span className="px-3 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono font-semibold">
                     Bounty Claimed
                   </span>
                 )}
@@ -959,10 +976,10 @@ export const RaidBossArena: React.FC<RaidBossProps> = ({
                 {onSpawnNextBoss && (
                   <button
                     onClick={() => onSpawnNextBoss(rosterIndex + 1, currentLevel + 1)}
-                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white border border-white/15 font-mono text-xs font-semibold transition-all"
+                    className="flex-1 sm:flex-initial min-h-[42px] inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-display text-xs font-extrabold transition-all cursor-pointer"
                   >
-                    <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
-                    Deploy Tier {currentLevel + 1}
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Spawn Tier {currentLevel + 1}
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 )}

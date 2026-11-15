@@ -801,7 +801,7 @@ export const CombinedStudyRoomModal: React.FC<CombinedStudyRoomModalProps> = ({
         setBtStatusMessage('Bluetooth scan cancelled.');
       } else {
         setBtStatus('idle');
-        setBtStatusMessage('Bluetooth pairing finished — WebRTC P2P direct channel armed.');
+        setBtStatusMessage('Bluetooth pairing finished - WebRTC P2P direct channel armed.');
         initWebRTCPeer(true);
       }
     }

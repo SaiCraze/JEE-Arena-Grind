@@ -159,6 +159,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 export interface ServerFirestoreBootstrap {
   success: boolean;
+  revision?: number;
   timestamp: number;
   members: any[];
   sessions: any[];
@@ -312,6 +313,9 @@ function createInitialMirrorState(): ServerFirestoreBootstrap {
 }
 
 let liveMirror: ServerFirestoreBootstrap = createInitialMirrorState();
+let latestAppliedRevision = 0;
+let activeBridgeMutations = 0;
+let lastLocalMutationAtMs = 0;
 
 function persistMirrorToLocalStorage() {
   if (typeof window === 'undefined') return;
@@ -453,8 +457,25 @@ function mergeRemoteMembersWithLocalTimers(remoteMembers: any[], localMembers: a
   });
 }
 
-function ingestServerPayload(data: Partial<ServerFirestoreBootstrap>, targetCollection?: string) {
+function ingestServerPayload(
+  data: Partial<ServerFirestoreBootstrap>,
+  targetCollection?: string,
+  options?: { isAuthoritativeSync?: boolean }
+) {
   if (!data) return;
+  const incomingRev = typeof data.revision === 'number' ? data.revision : null;
+  if (!options?.isAuthoritativeSync) {
+    // Reject out-of-order bootstrap responses while a local mutation is in-flight or just completed
+    if (activeBridgeMutations > 0 || (Date.now() - lastLocalMutationAtMs < 3500)) {
+      return;
+    }
+    if (incomingRev !== null && latestAppliedRevision > 0 && incomingRev < latestAppliedRevision) {
+      return;
+    }
+  }
+  if (incomingRev !== null) {
+    latestAppliedRevision = options?.isAuthoritativeSync ? incomingRev : Math.max(latestAppliedRevision, incomingRev);
+  }
   if (Array.isArray(data.members) && data.members.length > 0) {
     liveMirror.members = mergeRemoteMembersWithLocalTimers(data.members, liveMirror.members);
   }
@@ -644,6 +665,9 @@ function ensureRealtimeStreamConnected() {
           }
 
           if (parsed.type === 'delta' && parsed.mutation) {
+            if (typeof parsed.revision === 'number') {
+              latestAppliedRevision = Math.max(latestAppliedRevision, parsed.revision);
+            }
             const mut = parsed.mutation;
             if (mut.collectionName === 'settings' && mut.docId === 'arenaState' && mut.updatedDoc) {
               liveMirror.arenaState = mut.updatedDoc;
@@ -672,7 +696,12 @@ function ensureRealtimeStreamConnected() {
 
           if (parsed.payload) {
             const targetCol = parsed.mutation?.collectionName;
-            ingestServerPayload(parsed.payload, targetCol);
+            const syncPayload = typeof parsed.revision === 'number'
+              ? { ...parsed.payload, revision: parsed.revision }
+              : parsed.payload;
+            ingestServerPayload(syncPayload, targetCol, {
+              isAuthoritativeSync: parsed.type === 'sync' && activeBridgeMutations === 0
+            });
             window.dispatchEvent(new CustomEvent('jee-server-synced'));
           }
         } catch {
@@ -731,7 +760,29 @@ export async function fetchFastTimerSync(): Promise<{
     if (data && data.success) {
       updateServerClockOffset(data.serverNow);
       if (Array.isArray(data.members) && data.members.length > 0) {
-        const mergedMembers = mergeRemoteMembersWithLocalTimers(data.members, liveMirror.members);
+        const currentMirrorMembers = Array.isArray(liveMirror.members) && liveMirror.members.length > 0
+          ? liveMirror.members
+          : sanitizeMirrorMembers(data.members);
+        const now = Date.now();
+        const mergedMembers = currentMirrorMembers.map((existing: any) => {
+          const remote = data.members.find((rm: any) => rm && rm.id === existing.id);
+          if (!remote) return existing;
+          const localUpdated = Number(existing.grindingUpdatedAt) || 0;
+          const remoteUpdated = Number(remote.grindingUpdatedAt) || 0;
+          if (localUpdated > remoteUpdated && now - localUpdated < 20000) {
+            return existing;
+          }
+          return {
+            ...existing,
+            isGrinding: Boolean(remote.isGrinding),
+            grindingSubject: remote.grindingSubject ?? existing.grindingSubject ?? '',
+            grindingStartedAt: remote.grindingStartedAt ?? null,
+            grindingAccumulatedSeconds: Number(remote.grindingAccumulatedSeconds) || 0,
+            grindingLinkedTaskId: remote.grindingLinkedTaskId ?? '',
+            grindingUpdatedAt: remoteUpdated || localUpdated,
+            lastActiveAt: remote.lastActiveAt || existing.lastActiveAt
+          };
+        });
         const prevHash = JSON.stringify(liveMirror.members);
         const nextHash = JSON.stringify(mergedMembers);
         if (prevHash !== nextHash) {
@@ -783,7 +834,9 @@ export async function fetchServerFirestoreBootstrap(force = false): Promise<Serv
     if (!res.ok) return liveMirror;
     const data = await res.json();
     if (data && data.success) {
-      ingestServerPayload(data);
+      ingestServerPayload(data, undefined, {
+        isAuthoritativeSync: Boolean(force && activeBridgeMutations === 0)
+      });
       window.dispatchEvent(new CustomEvent('jee-server-synced'));
       return liveMirror;
     }
@@ -888,13 +941,10 @@ async function mutateViaServerBridge(payload: {
   docId?: string;
   data?: any;
   merge?: boolean;
-}): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
-  if (broadcastChan && payload.docId) {
-    try {
-      broadcastChan.postMessage({ type: 'MIRROR_MUTATION', payload });
-    } catch {}
-  }
+}): Promise<void> {
+  if (typeof window === 'undefined') return;
+  activeBridgeMutations++;
+  lastLocalMutationAtMs = Date.now();
   try {
     const res = await fetch('/api/firestore/mutate', {
       method: 'POST',
@@ -905,10 +955,40 @@ async function mutateViaServerBridge(payload: {
     if (result && result.quotaExceeded) {
       notifyQuotaExceeded();
     }
-    return res.ok;
-  } catch {
-    return false;
+    if (!res.ok || (result && result.success === false)) {
+      throw new Error(result?.error || `Server sync failed (HTTP ${res.status})`);
+    }
+    if (result && typeof result.revision === 'number') {
+      latestAppliedRevision = Math.max(latestAppliedRevision, result.revision);
+    }
+    lastLocalMutationAtMs = Date.now();
+    if (broadcastChan && payload.docId) {
+      try {
+        broadcastChan.postMessage({ type: 'MIRROR_MUTATION', payload });
+      } catch {}
+    }
+  } finally {
+    activeBridgeMutations = Math.max(0, activeBridgeMutations - 1);
   }
+}
+
+function captureCollectionSnapshot(collectionName: string, docId: string) {
+  if (collectionName === 'settings' && docId === 'arenaState') {
+    return { isArena: true, prev: liveMirror.arenaState ? { ...liveMirror.arenaState } : null };
+  }
+  const key = mapCollectionNameToMirrorKey(collectionName);
+  const prevList = Array.isArray(liveMirror[key]) ? [...(liveMirror[key] as any[])] : [];
+  return { isArena: false, key, prev: prevList };
+}
+
+function restoreCollectionSnapshot(collectionName: string, snap: { isArena: boolean; key?: keyof ServerFirestoreBootstrap; prev: any }) {
+  if (snap.isArena) {
+    liveMirror.arenaState = snap.prev;
+  } else if (snap.key) {
+    (liveMirror as any)[snap.key] = snap.prev;
+  }
+  persistMirrorToLocalStorage();
+  notifyAllListeners(collectionName);
 }
 
 export async function setDoc(docRef: DocumentReference<any>, data: any, options?: SetOptions): Promise<void> {
@@ -917,9 +997,15 @@ export async function setDoc(docRef: DocumentReference<any>, data: any, options?
   const merge = Boolean(options && 'merge' in options && options.merge);
 
   if (!collectionName) return;
+  const snap = captureCollectionSnapshot(collectionName, docId);
   applyLocalMirrorMutation({ action: 'set', collectionName, docId, data, merge });
 
-  await mutateViaServerBridge({ action: 'set', collectionName, docId, data, merge });
+  try {
+    await mutateViaServerBridge({ action: 'set', collectionName, docId, data, merge });
+  } catch (err) {
+    restoreCollectionSnapshot(collectionName, snap);
+    throw err;
+  }
 }
 
 export async function addDoc(colRef: CollectionReference<any>, data: any): Promise<DocumentReference<any>> {
@@ -927,14 +1013,20 @@ export async function addDoc(colRef: CollectionReference<any>, data: any): Promi
   const collectionName = colRef.id;
   const docId = newDocRef.id;
 
+  const snap = captureCollectionSnapshot(collectionName, docId);
   applyLocalMirrorMutation({ action: 'set', collectionName, docId, data, merge: false });
-  await mutateViaServerBridge({
-    action: 'set',
-    collectionName,
-    docId,
-    data,
-    merge: false
-  });
+  try {
+    await mutateViaServerBridge({
+      action: 'set',
+      collectionName,
+      docId,
+      data,
+      merge: false
+    });
+  } catch (err) {
+    restoreCollectionSnapshot(collectionName, snap);
+    throw err;
+  }
 
   return newDocRef;
 }
@@ -944,9 +1036,15 @@ export async function updateDoc(docRef: DocumentReference<any>, data: any): Prom
   const docId = docRef.id;
 
   if (!collectionName) return;
+  const snap = captureCollectionSnapshot(collectionName, docId);
   applyLocalMirrorMutation({ action: 'update', collectionName, docId, data, merge: true });
 
-  await mutateViaServerBridge({ action: 'update', collectionName, docId, data });
+  try {
+    await mutateViaServerBridge({ action: 'update', collectionName, docId, data });
+  } catch (err) {
+    restoreCollectionSnapshot(collectionName, snap);
+    throw err;
+  }
 }
 
 export async function deleteDoc(docRef: DocumentReference<any>): Promise<void> {
@@ -954,9 +1052,15 @@ export async function deleteDoc(docRef: DocumentReference<any>): Promise<void> {
   const docId = docRef.id;
 
   if (!collectionName) return;
+  const snap = captureCollectionSnapshot(collectionName, docId);
   applyLocalMirrorMutation({ action: 'delete', collectionName, docId });
 
-  await mutateViaServerBridge({ action: 'delete', collectionName, docId });
+  try {
+    await mutateViaServerBridge({ action: 'delete', collectionName, docId });
+  } catch (err) {
+    restoreCollectionSnapshot(collectionName, snap);
+    throw err;
+  }
 }
 
 export async function initFirebaseAuth(onUser?: (u: User | null) => void) {

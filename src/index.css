@@ -92,7 +92,7 @@
 
     .surface-card,
     .surface-leader-1 {
-      border-radius: 1.65rem;
+      border-radius: 0.75rem;
       touch-action: pan-x pan-y pinch-zoom;
     }
   }
@@ -168,7 +168,7 @@
   position: relative;
 }
 
-/* Mobile GPU Acceleration — Fast Compositor Glass on Touch Viewports */
+/* Mobile GPU Acceleration - Fast Compositor Glass on Touch Viewports */
 @media (max-width: 768px) {
   .surface-card {
     backdrop-filter: blur(12px) saturate(140%);
@@ -299,7 +299,7 @@
     box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Primary Action Button — Glossy Institutional Platinum & Sky */
+/* Primary Action Button - Glossy Institutional Platinum & Sky */
 .btn-primary {
   background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%);
   color: #06070A !important;
@@ -440,47 +440,28 @@
   animation: confettiFall linear infinite;
 }
 
-/* Complete Theme Harmonization — Zero Orange, Cool Executive Sky/Cyan/Platinum Palette */
-.text-orange-200, .text-orange-300, .text-amber-200, .text-amber-300 { color: #BAE6FD !important; }
-.text-orange-400, .text-orange-500, .text-amber-400, .text-amber-500 { color: #38BDF8 !important; }
-.fill-orange-400, .fill-orange-500, .fill-amber-400 { fill: #38BDF8 !important; }
-
-.bg-orange-400, .bg-orange-500, .bg-amber-400, .bg-amber-500 {
-  background-color: #38BDF8 !important;
-  color: #06070A !important;
-}
-.hover\:bg-orange-300:hover, .hover\:bg-orange-400:hover, .hover\:bg-amber-300:hover, .hover\:bg-amber-400:hover {
-  background-color: #7DD3FC !important;
+/* Boxy Gamified Command Deck Utilities */
+.box-arena-panel {
+  background: linear-gradient(170deg, rgba(17, 21, 31, 0.94) 0%, rgba(9, 11, 17, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.90), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.bg-orange-500\/5, .bg-amber-500\/5 { background-color: rgba(56, 189, 248, 0.05) !important; }
-.bg-orange-500\/10, .bg-amber-500\/10, .bg-amber-400\/10, .bg-orange-400\/10 { background-color: rgba(56, 189, 248, 0.10) !important; }
-.bg-orange-500\/15, .bg-amber-500\/15, .bg-amber-400\/15, .bg-orange-400\/15 { background-color: rgba(56, 189, 248, 0.15) !important; }
-.bg-orange-500\/20, .bg-amber-500\/20, .bg-amber-400\/20, .bg-orange-400\/20 { background-color: rgba(56, 189, 248, 0.20) !important; }
-.hover\:bg-orange-500\/25:hover, .hover\:bg-amber-500\/25:hover, .hover\:bg-amber-400\/30:hover { background-color: rgba(56, 189, 248, 0.26) !important; }
+.box-leader-gold {
+  background:
+    radial-gradient(110% 70% at 50% 0%, rgba(245, 158, 11, 0.14) 0%, transparent 65%),
+    linear-gradient(168deg, rgba(24, 24, 34, 0.95) 0%, rgba(10, 11, 17, 0.98) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.48);
+  box-shadow:
+    0 22px 48px -16px rgba(0, 0, 0, 0.92),
+    0 0 32px -12px rgba(245, 158, 11, 0.25),
+    inset 0 1px 0 rgba(251, 191, 36, 0.35);
+}
 
-.border-orange-400, .border-orange-500, .border-amber-400, .border-amber-500 { border-color: rgba(56, 189, 248, 0.65) !important; }
-.border-orange-500\/20, .border-amber-500\/20, .border-amber-400\/20 { border-color: rgba(56, 189, 248, 0.20) !important; }
-.border-orange-500\/25, .border-amber-500\/25 { border-color: rgba(56, 189, 248, 0.25) !important; }
-.border-orange-500\/30, .border-amber-500\/30, .border-amber-400\/30 { border-color: rgba(56, 189, 248, 0.30) !important; }
-.border-orange-500\/35, .border-amber-500\/35 { border-color: rgba(56, 189, 248, 0.35) !important; }
-.border-orange-500\/40, .border-amber-500\/40, .border-amber-400\/40 { border-color: rgba(56, 189, 248, 0.40) !important; }
-.border-orange-500\/50, .border-amber-500\/50, .border-amber-500\/60, .border-amber-400\/60 { border-color: rgba(56, 189, 248, 0.55) !important; }
-
-.from-orange-500, .from-orange-400, .from-amber-500, .from-amber-400, .from-amber-300 {
-  --tw-gradient-from: #38BDF8 var(--tw-gradient-from-position) !important;
-}
-.via-orange-500\/5, .via-amber-500\/5 {
-  --tw-gradient-via: rgba(56, 189, 248, 0.05) var(--tw-gradient-via-position) !important;
-}
-.to-orange-600, .to-orange-500, .to-orange-400, .to-amber-500, .to-amber-400 {
-  --tw-gradient-to: #22D3EE var(--tw-gradient-to-position) !important;
-}
-.ring-amber-400\/40, .ring-orange-400\/40 {
-  --tw-ring-color: rgba(56, 189, 248, 0.4) !important;
-}
-.shadow-amber-500\/20, .shadow-orange-500\/20 {
-  --tw-shadow-color: rgba(56, 189, 248, 0.2) !important;
+.box-metric-cell {
+  background: rgba(7, 9, 15, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,38 +1,38 @@
 [
   {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/c4xxBgwyxyo:APA91bHS9tSDimzIQ5gxj1jr08Jr5dNEct1kSXiDkdDURoe138fqa3Sxig5x3yMCdUHIWyZmYNCVracOvqaHsZ2OFp8rJ7VPRsgJTGLK6SbVHTho7KyzFBHLFVg2lvp3a8E6GB4FzYbZ",
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
-    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
-    "memberId": "nishchit",
-    "isStandalone": true,
-    "isMobile": false,
-    "memberName": "Nishchit",
     "subscription": {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/c4xxBgwyxyo:APA91bHS9tSDimzIQ5gxj1jr08Jr5dNEct1kSXiDkdDURoe138fqa3Sxig5x3yMCdUHIWyZmYNCVracOvqaHsZ2OFp8rJ7VPRsgJTGLK6SbVHTho7KyzFBHLFVg2lvp3a8E6GB4FzYbZ",
       "expirationTime": null,
       "keys": {
-        "p256dh": "BKYTTG5owoiP2sVT-gjYgxGqH7pUCz3lETfI70Eky0aES3lES7Bk5C5Y8rj9ky4dq8pnuwZg7acCPgXJN_j32Cg",
-        "auth": "qiC8LJDLIFT-xl_suqZQ4g"
-      },
-      "endpoint": "https://fcm.googleapis.com/fcm/send/c4xxBgwyxyo:APA91bHS9tSDimzIQ5gxj1jr08Jr5dNEct1kSXiDkdDURoe138fqa3Sxig5x3yMCdUHIWyZmYNCVracOvqaHsZ2OFp8rJ7VPRsgJTGLK6SbVHTho7KyzFBHLFVg2lvp3a8E6GB4FzYbZ"
-    },
-    "updatedAt": 1794498265075
-  },
-  {
-    "isStandalone": true,
-    "subscription": {
-      "expirationTime": null,
-      "endpoint": "https://fcm.googleapis.com/fcm/send/cTsfqh5fEuA:APA91bGbW3B2U0m2hndclWM_kXQw6ik694UlKSqs-YhALBU9_QqGZiOLYmE2UZDVaoe18_wRCKOguGWkQSZsHwmW9gnB_oALivrRbGWnFY5su0tJaQjyOR-Br5-6Spr-OYmmHzrgAyf6",
-      "keys": {
-        "p256dh": "BL_0_wbsBRsXYXfuHjVGLjGqPJTsoAydTtIoFf9VxmubcDevyrzVtV8YF19yTU6BIfSTq3fk7UVOE-OV2h9Cr1Y",
-        "auth": "0plA1i1AENda8op2SwaAvA"
+        "auth": "qiC8LJDLIFT-xl_suqZQ4g",
+        "p256dh": "BKYTTG5owoiP2sVT-gjYgxGqH7pUCz3lETfI70Eky0aES3lES7Bk5C5Y8rj9ky4dq8pnuwZg7acCPgXJN_j32Cg"
       }
     },
-    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
-    "memberName": "Nishchit",
-    "isMobile": true,
     "memberId": "nishchit",
-    "updatedAt": 1794333982984,
+    "isStandalone": true,
+    "updatedAt": 1794498265075,
+    "endpoint": "https://fcm.googleapis.com/fcm/send/c4xxBgwyxyo:APA91bHS9tSDimzIQ5gxj1jr08Jr5dNEct1kSXiDkdDURoe138fqa3Sxig5x3yMCdUHIWyZmYNCVracOvqaHsZ2OFp8rJ7VPRsgJTGLK6SbVHTho7KyzFBHLFVg2lvp3a8E6GB4FzYbZ",
+    "memberName": "Nishchit",
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "isMobile": false
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/cTsfqh5fEuA:APA91bGbW3B2U0m2hndclWM_kXQw6ik694UlKSqs-YhALBU9_QqGZiOLYmE2UZDVaoe18_wRCKOguGWkQSZsHwmW9gnB_oALivrRbGWnFY5su0tJaQjyOR-Br5-6Spr-OYmmHzrgAyf6",
+    "subscription": {
+      "keys": {
+        "auth": "0plA1i1AENda8op2SwaAvA",
+        "p256dh": "BL_0_wbsBRsXYXfuHjVGLjGqPJTsoAydTtIoFf9VxmubcDevyrzVtV8YF19yTU6BIfSTq3fk7UVOE-OV2h9Cr1Y"
+      },
+      "expirationTime": null,
+      "endpoint": "https://fcm.googleapis.com/fcm/send/cTsfqh5fEuA:APA91bGbW3B2U0m2hndclWM_kXQw6ik694UlKSqs-YhALBU9_QqGZiOLYmE2UZDVaoe18_wRCKOguGWkQSZsHwmW9gnB_oALivrRbGWnFY5su0tJaQjyOR-Br5-6Spr-OYmmHzrgAyf6"
+    },
+    "memberName": "Nishchit",
+    "memberId": "nishchit",
+    "isStandalone": true,
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "isMobile": true,
     "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36",
-    "endpoint": "https://fcm.googleapis.com/fcm/send/cTsfqh5fEuA:APA91bGbW3B2U0m2hndclWM_kXQw6ik694UlKSqs-YhALBU9_QqGZiOLYmE2UZDVaoe18_wRCKOguGWkQSZsHwmW9gnB_oALivrRbGWnFY5su0tJaQjyOR-Br5-6Spr-OYmmHzrgAyf6"
+    "updatedAt": 1794333982984
   }
 ]

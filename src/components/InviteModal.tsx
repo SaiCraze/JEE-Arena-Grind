@@ -58,7 +58,7 @@ We’ve set up a real-time competitive study workspace on **JEE Grind Arena** to
 **What you get on the Arena:**
 ⏱️ **Live Study Session Timer** with anti-distraction lock screen & focus mode
 🎯 **Problem Solving & PYQ Logger** (Mains & Advanced difficulty Multipliers)
-⚔️ **Raid Boss Battles & Squad Bounties** — convert study hours into boss damage
+⚔️ **Raid Boss Battles & Squad Bounties** - convert study hours into boss damage
 📊 **Percentile Predictor & Exam Logger** for mock tests
 👑 **Live Leaderboard & Podium Standings** with streak shields & loot rewards
 
@@ -78,7 +78,7 @@ See you on the podium! 🏆`
 
 Hi everyone,
 
-I'd like to invite you to join our study group on JEE Grind Arena—a real-time competitive tracker designed specifically for JEE Mains & Advanced preparation.
+I'd like to invite you to join our study group on JEE Grind Arena, a real-time competitive tracker designed specifically for JEE Mains & Advanced preparation.
 
 Key Features:
 - Real-Time Stopwatch & Focus Timer: Track live study hours with subject tags (Physics, Chemistry, Math).
@@ -103,7 +103,7 @@ JEE Grind Arena Squad Member`
       badge: 'Public Invite',
       text: `🎯 Preparing for JEE 2026/2027? Stop grinding alone in isolation!
 
-Join our live JEE Grind Arena—a competitive study space where we track study hours, PYQ solve velocity, mock exam percentiles, and battle weekly Raid Bosses! ⚔️🔥
+Join our live JEE Grind Arena - a competitive study space where we track study hours, PYQ solve velocity, mock exam percentiles, and battle weekly Raid Bosses! ⚔️🔥
 
 👉 Hop into the Arena: ${currentAppUrl}
 

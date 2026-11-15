@@ -1724,7 +1724,7 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
           <div className="lg:col-span-5 surface-card rounded-3xl p-4 sm:p-6 border border-white/10 space-y-4">
             <div>
               <h3 className="text-base font-bold text-white font-display">
-                Day-of-Week Rhythm (Sun – Sat)
+                Day-of-Week Rhythm (Sun - Sat)
               </h3>
               <p className="text-xs text-slate-400">
                 Cumulative study volume by day of the week to identify coaching-day slumps vs. weekend surges.

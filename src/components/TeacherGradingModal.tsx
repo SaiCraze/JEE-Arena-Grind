@@ -191,19 +191,26 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
         }
         const blob = new Blob([u8arr], { type: mime });
         const blobUrl = URL.createObjectURL(blob);
-        const win = window.open(blobUrl, '_blank');
-        if (!win) {
-          const a = document.createElement('a');
-          a.href = blobUrl;
-          a.download = fileName;
-          a.click();
-        }
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
         return;
       } catch (e) {
         console.error('Failed to convert dataUrl to blob', e);
       }
     }
-    window.open(dataUrl, '_blank');
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = fileName;
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<{ url: string; title: string } | null>(null);

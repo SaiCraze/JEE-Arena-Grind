@@ -453,7 +453,7 @@ export const PWAOfflineBanner: React.FC<{ isOnline: boolean }> = ({ isOnline }) 
       <div className="flex items-center gap-2 min-w-0">
         <WifiOff className="w-3.5 h-3.5 text-sky-400 shrink-0 animate-pulse" />
         <span className="truncate font-semibold">
-          Offline Mode — App shell cached. Data syncs when back online.
+          Offline Mode - App shell cached. Data syncs when back online.
         </span>
       </div>
       <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[9.5px] font-mono-num font-bold shrink-0">

@@ -313,29 +313,31 @@ function ensureCompleteArenaState(rawState: any, prevState?: any, knownMembers?:
   base.sprintHistory = Array.from(sprintMap.values()).sort(
     (a, b) => (Number(b.sprintNumber) || 0) - (Number(a.sprintNumber) || 0)
   );
-  if (
-    (Number(base.currentCycle) || 0) < 5 ||
-    (base.leaderboardHidden && (!base.hiddenAt || Number(base.hiddenAt) < 1794163000000))
-  ) {
+  if ((Number(base.currentCycle) || 0) < 5) {
     base.currentCycle = 5;
     base.currentCycleStartMs = 1794163000000;
-    base.weeklyChampion = 'Sai';
-    base.weeklyChampionXp = 1808;
-    base.leaderboardHidden = false;
-    base.simulateFridayBlackout = false;
-    base.autoLocked = false;
-    base.hiddenAt = null;
-    base.manualAdminReveal = true;
-    base.revealTimestamp = Math.max(Number(base.revealTimestamp) || 0, 1794163000000);
-    base.lastAutoLockDate = '2026-11-06';
-    base.scheduledBlackoutUnlockAt = null;
-    base.scheduledBlackoutPreNotified = false;
   }
-  const hasValidSprint4 = base.sprintHistory.some((s: any) => s.id === 'sprint_4');
-  if (!base.reigningSprintId || base.reigningSprintId === 'sprint_3' || base.reigningSprintId === 'sprint_2' || base.reigningSprintId === 'sprint_1') {
-    base.reigningSprintId = hasValidSprint4 ? 'sprint_4' : 'sprint_3';
-    base.weeklyChampion = hasValidSprint4 ? 'Sai' : 'Utham';
-    base.weeklyChampionXp = hasValidSprint4 ? 1808 : 1605;
+  if (!base.currentCycleStartMs || Number(base.currentCycleStartMs) < 1794163000000) {
+    base.currentCycleStartMs = 1794163000000;
+  }
+  if (base.leaderboardHidden && !base.hiddenAt) {
+    base.hiddenAt = Date.now();
+  }
+  const hasValidReigningSprint =
+    base.reigningSprintId &&
+    Array.isArray(base.sprintHistory) &&
+    base.sprintHistory.some((s: any) => s && s.id === base.reigningSprintId);
+  if (
+    !hasValidReigningSprint ||
+    base.reigningSprintId === 'sprint_3' ||
+    base.reigningSprintId === 'sprint_2' ||
+    base.reigningSprintId === 'sprint_1'
+  ) {
+    const topSprint = Array.isArray(base.sprintHistory) ? base.sprintHistory[0] : null;
+    const hasValidSprint4 = base.sprintHistory.some((s: any) => s.id === 'sprint_4');
+    base.reigningSprintId = topSprint?.id || (hasValidSprint4 ? 'sprint_4' : 'sprint_3');
+    base.weeklyChampion = topSprint?.winnerName || (hasValidSprint4 ? 'Sai' : 'Utham');
+    base.weeklyChampionXp = topSprint?.winnerXp ?? (hasValidSprint4 ? 1808 : 1605);
   }
   base.audits = Array.isArray(rawState?.audits) ? rawState.audits : (Array.isArray(prevState?.audits) ? prevState.audits : []);
   base.duels = Array.isArray(rawState?.duels) ? rawState.duels : (Array.isArray(prevState?.duels) ? prevState.duels : []);
@@ -549,7 +551,7 @@ function normalizeServerExams(rawExams: any[]): any[] {
   const seenKeys = new Set<string>();
   const deduped: any[] = [];
   for (const ex of validExams) {
-    const sig = `${ex.memberId || ''}_${ex.date || ''}_${ex.examType || ''}_${ex.overallMarks ?? ''}_${ex.overallRank ?? ''}`;
+    const sig = `${ex.memberId || ''}_${ex.date || ''}_${ex.examType || ''}_${String(ex.title || '').trim().toLowerCase()}_${ex.overallMarks ?? ''}_${ex.overallRank ?? ''}`;
     if (ex.memberId && ex.date && seenKeys.has(sig)) {
       continue;
     }
@@ -645,12 +647,15 @@ function normalizeServerActivities(rawActivities: any[]): any[] {
     });
 }
 
+let loadedFromDiskStore = false;
+
 function loadInitialStorePayload(): any {
   try {
     if (fs.existsSync(DISK_STORE_PATH)) {
       const raw = fs.readFileSync(DISK_STORE_PATH, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.members) && parsed.members.length > 0) {
+        loadedFromDiskStore = true;
         const preDelSet = new Set<string>([
           ...(Array.isArray(parsed.arenaState?.deletedDocIds) ? parsed.arenaState.deletedDocIds : []),
           ...Array.from(PERMANENT_DELETED_MEMBER_IDS)
@@ -678,15 +683,20 @@ function loadInitialStorePayload(): any {
   } catch {
     // Ignore disk read error and use default seed
   }
+  loadedFromDiskStore = false;
   return {
     ...defaultSeedPayload,
     arenaState: ensureCompleteArenaState(defaultSeedPayload.arenaState)
   };
 }
 
+let serverRevision = 1;
+const initialPayload = loadInitialStorePayload();
+initialPayload.revision = serverRevision;
+
 let cachedBootstrap: { timestamp: number; payload: any } = {
   timestamp: Date.now(),
-  payload: loadInitialStorePayload()
+  payload: initialPayload
 };
 
 let serverQuotaExceeded = false;
@@ -804,6 +814,7 @@ function broadcastRealtimeState(mutationInfo?: any) {
     }
     packet = JSON.stringify({
       type: 'delta',
+      revision: serverRevision,
       mutation: {
         ...mutationInfo,
         updatedDoc
@@ -815,6 +826,7 @@ function broadcastRealtimeState(mutationInfo?: any) {
   } else {
     packet = JSON.stringify({
       type: 'sync',
+      revision: serverRevision,
       mutation: null,
       payload: cachedBootstrap.payload,
       quotaExceeded: serverQuotaExceeded,
@@ -1904,6 +1916,7 @@ app.get('/api/firestore/stream', (req, res) => {
   // Immediately push authoritative state on connect
   const initialPacket = JSON.stringify({
     type: 'sync',
+    revision: serverRevision,
     payload: cachedBootstrap.payload,
     quotaExceeded: serverQuotaExceeded,
     serverNow: Date.now(),
@@ -1974,6 +1987,7 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
     if (serverQuotaExceeded && cachedBootstrap) {
       return res.json({
         ...cachedBootstrap.payload,
+        revision: serverRevision,
         quotaExceeded: true,
         coalescedSaves: totalCoalescedSaves
       });
@@ -1987,6 +2001,7 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
     ) {
       return res.json({
         ...cachedBootstrap.payload,
+        revision: serverRevision,
         quotaExceeded: serverQuotaExceeded,
         coalescedSaves: totalCoalescedSaves
       });
@@ -2031,25 +2046,29 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
 
     const cloudMembers = mapSnap(membersSnap);
     const rawCloudArenaState = arenaStateSnap.exists() ? arenaStateSnap.data() : cachedBootstrap.payload.arenaState;
-    // Prioritize local disk arenaState over rawCloudArenaState so recent local changes survive
-    const mergedArenaState = ensureCompleteArenaState(cachedBootstrap.payload.arenaState, rawCloudArenaState);
+    const localArenaState = cachedBootstrap.payload.arenaState || {};
+    const cloudIsNewer =
+      !loadedFromDiskStore ||
+      (Number(rawCloudArenaState?.currentCycle) || 0) > (Number(localArenaState?.currentCycle) || 0) ||
+      (Number(rawCloudArenaState?.currentCycleStartMs) || 0) > (Number(localArenaState?.currentCycleStartMs) || 0) ||
+      (Number(rawCloudArenaState?.revealTimestamp) || 0) > (Number(localArenaState?.revealTimestamp) || 0) ||
+      (Number(rawCloudArenaState?.hiddenAt) || 0) > (Number(localArenaState?.hiddenAt) || 0);
+    const mergedArenaState = cloudIsNewer
+      ? ensureCompleteArenaState(rawCloudArenaState, localArenaState)
+      : ensureCompleteArenaState(localArenaState, rawCloudArenaState);
     const deletedSet = new Set<string>(mergedArenaState.deletedDocIds || []);
-    const hadSprint4InCloud =
-      Array.isArray(rawCloudArenaState?.sprintHistory) &&
-      rawCloudArenaState.sprintHistory.some((s: any) => s && s.id === 'sprint_4') &&
-      Number(rawCloudArenaState?.currentCycle) >= 5 &&
-      rawCloudArenaState?.leaderboardHidden === false;
 
-    const mergeById = (cloudArr: any[], localArr: any[], sortField?: string) => {
+    const mergeById = (cloudArr: any[], localArr: any[], sortField?: string, preferCloud = false) => {
       const map = new Map<string, any>();
-      if (Array.isArray(cloudArr)) {
-        for (const item of cloudArr) {
+      const firstArr = preferCloud ? localArr : cloudArr;
+      const secondArr = preferCloud ? cloudArr : localArr;
+      if (Array.isArray(firstArr)) {
+        for (const item of firstArr) {
           if (item && item.id && !deletedSet.has(item.id)) map.set(item.id, item);
         }
       }
-      // Local disk store takes precedence over stale cloud docs!
-      if (Array.isArray(localArr)) {
-        for (const item of localArr) {
+      if (Array.isArray(secondArr)) {
+        for (const item of secondArr) {
           if (item && item.id && !deletedSet.has(item.id)) {
             const prev = map.get(item.id);
             map.set(item.id, prev ? { ...prev, ...item } : item);
@@ -2064,7 +2083,9 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
     };
 
     const rawMergedMembers =
-      cloudMembers.length > 0 ? mergeById(cloudMembers, cachedBootstrap.payload.members) : cachedBootstrap.payload.members;
+      cloudMembers.length > 0
+        ? mergeById(cloudMembers, cachedBootstrap.payload.members, undefined, !loadedFromDiskStore)
+        : cachedBootstrap.payload.members;
     const normalizedMergedMembers = normalizeServerMembers(rawMergedMembers || [], deletedSet);
     const syncedArenaSubs = partitionPushSubscriptions(
       [
@@ -2094,6 +2115,7 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
 
     const payload = {
       success: true,
+      revision: serverRevision,
       timestamp: Date.now(),
       members: normalizedMergedMembers,
       sessions: sessions.length > 0 ? mergeById(sessions, cachedBootstrap.payload.sessions, 'timestamp') : cachedBootstrap.payload.sessions,
@@ -2136,16 +2158,7 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
         merge: true
       });
     }
-    if (!hadSprint4InCloud) {
-      lastSyncedHashes.delete('settings/arenaState');
-      enqueueCoalescedFirestoreWrite({
-        action: 'set',
-        collectionName: 'settings',
-        docId: 'arenaState',
-        data: mergedArenaState,
-        merge: true
-      });
-    }
+    loadedFromDiskStore = true;
     scheduleDiskPersist();
     return res.json(payload);
   } catch (error: any) {
@@ -2161,6 +2174,7 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
       disableNetwork(serverDb).catch(() => {});
       return res.json({
         ...cachedBootstrap.payload,
+        revision: serverRevision,
         quotaExceeded: true,
         quotaMessage: 'Firestore daily free quota reached. Operating on live multi-user server engine.'
       });
@@ -2168,6 +2182,7 @@ app.get('/api/firestore/bootstrap', async (req, res) => {
 
     return res.json({
       ...cachedBootstrap.payload,
+      revision: serverRevision,
       fromFallback: true
     });
   }
@@ -2250,9 +2265,7 @@ app.post('/api/firestore/mutate', async (req, res) => {
     const currentArena = cachedBootstrap.payload?.arenaState || {};
     if (data.leaderboardHidden === true && data.autoLocked === true) {
       const alreadyUnlockedThisWeekend =
-        currentArena.lastAutoLockDate === data.lastAutoLockDate ||
-        currentArena.lastAutoLockDate === '2026-11-06' ||
-        (Number(currentArena.revealTimestamp) || 0) >= 1793989740000;
+        Boolean(data.lastAutoLockDate) && currentArena.lastAutoLockDate === data.lastAutoLockDate;
       if (alreadyUnlockedThisWeekend) {
         return res.json({ success: true, id: docId, coalesced: true, ignoredStaleAutoLock: true });
       }
@@ -2301,8 +2314,15 @@ app.post('/api/firestore/mutate', async (req, res) => {
   // 1. Update authoritative in-memory store immediately
   const { targetId, changed } = applyInMemoryMutation({ action, collectionName, docId, data, merge });
 
+  if (changed) {
+    serverRevision++;
+    if (cachedBootstrap?.payload) {
+      cachedBootstrap.payload.revision = serverRevision;
+    }
+  }
+
   // When a study session is logged OR a member's timer is reset/ended (isGrinding: false, grindingAccumulatedSeconds: 0),
-  // immediately clear that member's grinding state and any stale shared study block on the server so no device restarts the timer!
+  // clear that member's grinding state and clear combinedStudyRoom ONLY if that member is actually in the shared room!
   if (collectionName === 'sessions' && (action === 'set' || action === 'add') && data?.memberId && !data?.heldForReview) {
     const memId = String(data.memberId);
     const stopNow = Date.now();
@@ -2321,7 +2341,12 @@ app.post('/api/firestore/mutate', async (req, res) => {
       merge: true
     });
     const room = cachedBootstrap.payload.arenaState?.combinedStudyRoom;
-    if (room && (room.sharedBlockStartedAt || (Array.isArray(room.selectedMemberIds) && room.selectedMemberIds.length > 0))) {
+    const isInSharedRoom = Boolean(
+      room &&
+      Array.isArray(room.selectedMemberIds) &&
+      room.selectedMemberIds.includes(memId)
+    );
+    if (isInSharedRoom && (room.sharedBlockStartedAt || room.selectedMemberIds.length > 0)) {
       room.sharedBlockStartedAt = null;
       room.sharedTimerStatus = 'IDLE';
       room.sharedAccumulatedSeconds = 0;
@@ -2336,7 +2361,12 @@ app.post('/api/firestore/mutate', async (req, res) => {
     (Number(data.grindingAccumulatedSeconds) || 0) === 0
   ) {
     const room = cachedBootstrap.payload.arenaState?.combinedStudyRoom;
-    if (room && (room.sharedBlockStartedAt || (Array.isArray(room.selectedMemberIds) && room.selectedMemberIds.includes(targetId)))) {
+    if (
+      room &&
+      Array.isArray(room.selectedMemberIds) &&
+      room.selectedMemberIds.includes(targetId) &&
+      (room.sharedBlockStartedAt || room.selectedMemberIds.length > 0)
+    ) {
       room.sharedBlockStartedAt = null;
       room.sharedTimerStatus = 'IDLE';
       room.sharedAccumulatedSeconds = 0;
@@ -2452,11 +2482,7 @@ app.post('/api/firestore/mutate', async (req, res) => {
           // Delay 600ms so if client also sends an 'activities' doc for this session, they share the dedupe key cleanly
           setTimeout(() => {
             if (canFireServerPushKey(`session_log_${sessMemId}`, 12000)) {
-              const sleeperState = cachedBootstrap.payload.arenaState?.weeklySleeperAgent;
-              const isSleeperDecoyActive =
-                sleeperState &&
-                sleeperState.memberId === sessMemId &&
-                !sleeperState.revealedAtBlackout;
+              const isSleeperDecoyActive = false;
               const rawDuration = Number(data.duration) || 0;
               const rawXp = Number(data.xpEarned) || 0;
               const rawSolved = Number(data.solvedQuestions ?? data.questions) || 0;
@@ -2568,6 +2594,7 @@ app.post('/api/firestore/mutate', async (req, res) => {
   return res.json({
     success: true,
     id: targetId,
+    revision: serverRevision,
     coalesced: !changed,
     quotaExceeded: serverQuotaExceeded,
     stats: {

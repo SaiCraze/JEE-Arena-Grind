@@ -332,7 +332,7 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
     if (worstSubject) {
       if (worstSubject.mins === 0 && worstSubject.solved === 0 && worstSubject.avgExamPct === 0) {
         cons.push(
-          `Zero logged study time or practice questions in ${worstSubject.subject} — high priority syllabus gap.`
+          `Zero logged study time or practice questions in ${worstSubject.subject} - high priority syllabus gap.`
         );
       } else {
         cons.push(
@@ -344,7 +344,7 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
     }
     if (memExams.length === 0) {
       cons.push(
-        `No weekly mock exams logged yet — missing up to +300 Weekly Exam XP pool.`
+        `No weekly mock exams logged yet - missing up to +300 Weekly Exam XP pool.`
       );
     } else if (avgPercentile < 85) {
       cons.push(
@@ -353,12 +353,12 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
     }
     if (advSolved < 15) {
       cons.push(
-        `Low JEE Advanced / Hard tier problem volume (${advSolved} Qs) — add 10–15 Advanced PYQs per week.`
+        `Low JEE Advanced / Hard tier problem volume (${advSolved} Qs) - add 10-15 Advanced PYQs per week.`
       );
     }
     if (avgSessionMins > 0 && avgSessionMins < 40) {
       cons.push(
-        `Short average session blocks (${avgSessionMins}m) — extending blocks to 60–90m unlocks Loot Crates & deeper retention.`
+        `Short average session blocks (${avgSessionMins}m) - extending blocks to 60-90m unlocks Loot Crates & deeper retention.`
       );
     }
     if (cons.length === 0) {
@@ -726,7 +726,7 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
                     <Trophy className="w-4 h-4 text-amber-400" />
-                    <span>Official Historical Weekly Sprint Record (Weeks 1–3)</span>
+                    <span>Official Historical Weekly Sprint Record (Weeks 1-3)</span>
                   </span>
                   <span className="text-[10px] font-mono-num text-slate-400">
                     {analytics.championships.length}x Champion · {analytics.podiums.length}x Podium
@@ -915,7 +915,7 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
                       <div>
                         <span className="text-slate-500 block text-[9.5px]">EXAM %ILE</span>
                         <strong className="text-sky-300">
-                          {st.avgExamPct > 0 ? `${st.avgExamPct.toFixed(1)}%` : '—'}
+                          {st.avgExamPct > 0 ? `${st.avgExamPct.toFixed(1)}%` : '-'}
                         </strong>
                       </div>
                     </div>

@@ -403,7 +403,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
       return;
     }
     if (bounty >= 4 && !solHandwrittenImg && trap.length < 5) {
-      setSolAntiAiNudge('For 4–10 XP doubts, add a quick 1-liner on what common trap or sign mistake to watch out for (or attach a handwritten notebook photo).');
+      setSolAntiAiNudge('For 4-10 XP doubts, add a quick 1-liner on what common trap or sign mistake to watch out for (or attach a handwritten notebook photo).');
       return;
     }
 
@@ -834,7 +834,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                   Live Sync
                 </span>
                 <span>•</span>
-                <span>Resolve Peer Doubts for +1–10 XP (Organic No-AI)</span>
+                <span>Resolve Peer Doubts for +1-10 XP (Organic No-AI)</span>
               </div>
             </div>
           </div>
@@ -1101,7 +1101,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
               </div>
               <div className="min-w-0">
                 <div className="font-bold text-white truncate flex items-center gap-1.5">
-                  <span>Peer Doubt Bounties (1–10 XP)</span>
+                  <span>Peer Doubt Bounties (1-10 XP)</span>
                   {unresolvedDoubtsCount > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-[9px] font-mono-num font-extrabold">
                       {unresolvedDoubtsCount} Open • +{totalOpenDoubtXp} XP Available
@@ -1109,7 +1109,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                   )}
                 </div>
                 <div className="text-[10px] text-slate-400 truncate">
-                  Explain in your own words or snap your rough notebook — no AI/Google copy-paste!
+                  Explain in your own words or snap your rough notebook - no AI/Google copy-paste!
                 </div>
               </div>
             </div>
@@ -1226,7 +1226,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                   : `Start a private conversation with ${activeRecipientObj?.name || 'this scholar'}.`}
               </p>
               <p className="text-[11px] text-slate-500 max-w-xs">
-                Post a Physics/Chem/Math doubt with a 1–10 XP bounty, share your live grind telemetry, or message a squadmate below.
+                Post a Physics/Chem/Math doubt with a 1-10 XP bounty, share your live grind telemetry, or message a squadmate below.
               </p>
             </div>
           ) : (
@@ -1702,7 +1702,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-[10.5px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
                               <Award className="w-3.5 h-3.5 text-amber-400" />
-                              Award Doubt Resolution Bounty (1–10 XP)
+                              Award Doubt Resolution Bounty (1-10 XP)
                             </span>
                             <button
                               type="button"
@@ -1731,14 +1731,14 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                                     </option>
                                   ))}
                                 <option value={msg.senderId}>
-                                  Solved it myself (0 XP — closes doubt)
+                                  Solved it myself (0 XP - closes doubt)
                                 </option>
                               </select>
                             </div>
 
                             <div>
                               <label className="text-[9.5px] text-slate-400 font-bold block mb-1">
-                                Difficulty XP Reward (1–10 XP)
+                                Difficulty XP Reward (1-10 XP)
                               </label>
                               <div className="flex items-center gap-1 flex-wrap">
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(xpVal => (
@@ -1876,7 +1876,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
             ) : (
               <div className="px-2.5 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-[10px] text-slate-300 flex items-center justify-between gap-2">
                 <span>
-                  🧠 <strong>Peer Style Only:</strong> No need for textbook grammar — explain the trick like you&apos;re at the study table, or snap your rough notebook!
+                  🧠 <strong>Peer Style Only:</strong> No need for textbook grammar - explain the trick like you&apos;re at the study table, or snap your rough notebook!
                 </span>
               </div>
             )}
@@ -2045,7 +2045,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                 <div className="flex items-center gap-1.5">
                   <HelpCircle className="w-3.5 h-3.5 text-violet-300" />
                   <span className="text-[10.5px] font-extrabold text-violet-200 uppercase tracking-wider">
-                    {doubtSubjectTag} Doubt • Set Difficulty &amp; XP Bounty (1–10 XP)
+                    {doubtSubjectTag} Doubt • Set Difficulty &amp; XP Bounty (1-10 XP)
                   </span>
                 </div>
                 <button
@@ -2082,7 +2082,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                         <span className="font-mono-num font-extrabold">+{cfg.defaultXp} XP</span>
                       </div>
                       <div className={`text-[8.5px] truncate ${active ? 'text-slate-900 font-semibold' : 'text-slate-500'}`}>
-                        {cfg.minXp === cfg.maxXp ? `${cfg.maxXp} XP` : `${cfg.minXp}–${cfg.maxXp} XP`}
+                        {cfg.minXp === cfg.maxXp ? `${cfg.maxXp} XP` : `${cfg.minXp}-${cfg.maxXp} XP`}
                       </div>
                     </button>
                   );
@@ -2190,7 +2190,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
                         ? 'bg-violet-400 text-slate-950 border-violet-300 shadow-sm'
                         : 'bg-white/[0.04] border-white/10 text-slate-400 hover:text-white'
                     }`}
-                    title={`Tag message as a ${subj} Doubt with a 1–10 XP bounty`}
+                    title={`Tag message as a ${subj} Doubt with a 1-10 XP bounty`}
                   >
                     ? {subj.slice(0, 4)}
                   </button>
@@ -2204,7 +2204,7 @@ export const SquadChatDrawer: React.FC<SquadChatDrawerProps> = ({
             {[
               'Locking in for a 90m Physics block right now ⚡',
               'Anyone free in Combined Study Lounge? 👥',
-              'Posted a doubt in #doubts — +5 XP bounty up for grabs! 🧠',
+              'Posted a doubt in #doubts - +5 XP bounty up for grabs! 🧠',
               'Finished today’s target problem set! 🎯'
             ].map((phrase, idx) => (
               <button
