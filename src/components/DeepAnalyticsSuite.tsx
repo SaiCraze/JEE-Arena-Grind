@@ -2496,7 +2496,7 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
                                     : cycRank === 2
                                     ? 'bg-zinc-700 text-zinc-200'
                                     : cycRank === 3
-                                    ? 'bg-orange-500/20 text-orange-300'
+                                    ? 'bg-yellow-500/20 text-yellow-300'
                                     : 'bg-zinc-800 text-zinc-400'
                                 }`}
                               >

@@ -262,7 +262,7 @@ const CRATE_ARCHETYPES = [
     subtitle: 'High chance for 2.0x Double Overclock & 750 HP Flare',
     accent: 'amber',
     border: 'border-amber-500/35 hover:border-amber-400/70',
-    glow: 'from-amber-500/20 via-orange-500/5 to-transparent',
+    glow: 'from-amber-500/20 via-yellow-500/5 to-transparent',
     badge: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
     icon: Flame,
   },

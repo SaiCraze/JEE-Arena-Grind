@@ -188,7 +188,7 @@ export const TacticalLoginPromptModal: React.FC<TacticalLoginPromptModalProps> =
           <div
             className={`p-4 rounded-2xl border transition-all ${
               weeklyDutyPending
-                ? 'bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-orange-500/15 border-amber-400/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]'
+                ? 'bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-yellow-500/15 border-amber-400/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]'
                 : 'bg-emerald-500/10 border-emerald-400/30'
             }`}
           >

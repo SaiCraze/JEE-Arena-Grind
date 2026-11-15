@@ -2,22 +2,29 @@
 
 @layer base {
   :root {
-    --bg-abyss: #06070A;
-    --bg-sanctuary: #0B0D13;
-    --bg-card: rgba(16, 19, 27, 0.76);
-    --bg-card-elevated: rgba(22, 26, 36, 0.88);
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-specular: rgba(255, 255, 255, 0.18);
+    --bg-abyss: #080C16;
+    --bg-sanctuary: #0B1120;
+    --bg-card: #111827;
+    --bg-card-elevated: #162033;
+    --border-ink: #020617;
+    --border-subtle: #1E293B;
+    --border-specular: #334155;
     --text-primary: #F8FAFC;
     --text-secondary: #94A3B8;
     --text-muted: #64748B;
-    --accent-primary: #38BDF8;
-    --accent-secondary: #22D3EE;
+    --accent-cobalt: #2563EB;
+    --accent-cyan: #38BDF8;
+    --accent-lime: #22C55E;
+    --accent-volt: #84CC16;
+    --accent-canary: #FACC15;
+    --accent-coral: #F43F5E;
+    --accent-violet: #8B5CF6;
+    --spring-arcade: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   * {
     box-sizing: border-box;
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: #1E293B;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -32,7 +39,9 @@
 
   html,
   body {
-    background-color: #06070A;
+    background-color: #080C16;
+    background-image: radial-gradient(#1E293B 1.5px, transparent 1.5px);
+    background-size: 20px 20px;
     color: #F8FAFC;
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -47,8 +56,8 @@
   }
 
   h1, h2, h3, h4, .font-display {
-    font-family: 'Outfit', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    letter-spacing: -0.025em;
+    font-family: 'Fredoka', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.02em;
   }
 
   .font-mono-num,
@@ -57,7 +66,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Global Smooth Micro-Transitions across interactive elements without blocking horizontal or vertical touch pan */
+  /* Springy Tactile Micro-Interactions across interactive elements */
   button,
   a,
   input,
@@ -65,15 +74,23 @@
   textarea {
     touch-action: pan-x pan-y manipulation;
     transition:
-      background-color 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-      color 0.2s cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+      background-color 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+      color 0.18s ease,
+      box-shadow 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+      transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+      opacity 0.18s ease;
   }
 
-  /* Prevent iOS Safari auto-zoom on form focus and ensure effortless hand scrolling in all directions */
+  button:not(:disabled):hover {
+    transform: translateY(-1.5px);
+  }
+
+  button:not(:disabled):active {
+    transform: translateY(2px) !important;
+  }
+
+  /* Prevent iOS Safari auto-zoom on form focus and ensure effortless hand scrolling */
   @media (max-width: 768px) {
     input,
     select,
@@ -91,31 +108,32 @@
     }
 
     .surface-card,
-    .surface-leader-1 {
-      border-radius: 0.75rem;
+    .surface-leader-1,
+    .box-arena-panel {
+      border-radius: 20px;
       touch-action: pan-x pan-y pinch-zoom;
     }
   }
 }
 
-/* Custom sleek scrollbars */
+/* Custom sleek arcade scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(6, 7, 10, 0.6);
+  background: #080C16;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.22);
+  background: #2563EB;
   border-radius: 9999px;
-  transition: background 0.2s ease;
+  border: 1px solid #020617;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.45);
+  background: #38BDF8;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -128,107 +146,82 @@
   touch-action: pan-x pan-y;
 }
 
-/* Glossy Liquid-Glass Surface Cards (Executive Theme) */
-.surface-card {
-  background:
-    radial-gradient(120% 80% at 50% 0%, rgba(56, 189, 248, 0.055) 0%, transparent 60%),
-    linear-gradient(165deg, rgba(20, 24, 34, 0.84) 0%, rgba(10, 12, 19, 0.95) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow:
-    0 20px 45px -18px rgba(0, 0, 0, 0.88),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
-    inset 0 -1px 0 0 rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(22px) saturate(155%);
-  -webkit-backdrop-filter: blur(22px) saturate(155%);
+/* Tactile Neo-Brutalist Arcade & Bento Surface Cards (Dark Mode) */
+.surface-card,
+.box-arena-panel,
+.arcade-card {
+  background-color: #111827;
+  border-radius: 20px;
+  border: 2px solid #334155;
+  border-bottom-width: 4px;
+  border-bottom-color: #020617;
+  box-shadow: 0 6px 0 #020617, 0 12px 24px -8px rgba(2, 6, 23, 0.75);
   transition:
-    border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    border-color 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.surface-card:not(.fixed):not(.sticky):not(.absolute) {
+.surface-card:not(.fixed):not(.sticky):not(.absolute),
+.box-arena-panel:not(.fixed):not(.sticky):not(.absolute),
+.arcade-card:not(.fixed):not(.sticky):not(.absolute) {
   position: relative;
 }
 
-/* Executive #1 Leader Portfolio Card */
-.surface-leader-1 {
-  background:
-    radial-gradient(100% 70% at 50% 0%, rgba(56, 189, 248, 0.13) 0%, transparent 65%),
-    linear-gradient(165deg, rgba(24, 30, 44, 0.91) 0%, rgba(11, 14, 22, 0.97) 100%);
-  border: 1px solid rgba(56, 189, 248, 0.38);
-  box-shadow:
-    0 24px 52px -14px rgba(0, 0, 0, 0.92),
-    0 0 36px -10px rgba(56, 189, 248, 0.22),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.30);
-  backdrop-filter: blur(24px) saturate(165%);
-  -webkit-backdrop-filter: blur(24px) saturate(165%);
+/* Tactile #1 Leader Portfolio Card - Canary Pop & Electric Cobalt Arcade Frame */
+.surface-leader-1,
+.box-leader-gold {
+  background-color: #131C31;
+  border-radius: 20px;
+  border: 2px solid #FACC15;
+  border-bottom-width: 5px;
+  border-bottom-color: #CA8A04;
+  box-shadow: 0 6px 0 #020617, 0 16px 32px -10px rgba(250, 204, 21, 0.18);
 }
 
-.surface-leader-1:not(.fixed):not(.sticky):not(.absolute) {
+.surface-leader-1:not(.fixed):not(.sticky):not(.absolute),
+.box-leader-gold:not(.fixed):not(.sticky):not(.absolute) {
   position: relative;
 }
 
-/* Mobile GPU Acceleration - Fast Compositor Glass on Touch Viewports */
-@media (max-width: 768px) {
-  .surface-card {
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
-    background:
-      radial-gradient(120% 80% at 50% 0%, rgba(56, 189, 248, 0.065) 0%, transparent 60%),
-      linear-gradient(165deg, rgba(20, 24, 34, 0.92) 0%, rgba(10, 12, 19, 0.97) 100%);
-    box-shadow:
-      0 14px 32px -12px rgba(0, 0, 0, 0.85),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
-    transform: translateZ(0);
-  }
-
-  .surface-leader-1 {
-    backdrop-filter: blur(14px) saturate(150%);
-    -webkit-backdrop-filter: blur(14px) saturate(150%);
-    background:
-      radial-gradient(100% 70% at 50% 0%, rgba(56, 189, 248, 0.14) 0%, transparent 65%),
-      linear-gradient(165deg, rgba(24, 30, 44, 0.94) 0%, rgba(11, 14, 22, 0.98) 100%);
-    transform: translateZ(0);
-  }
+/* Tactile Metric Cell */
+.box-metric-cell {
+  background-color: #0B1120;
+  border: 2px solid #1E293B;
+  border-bottom-width: 4px;
+  border-bottom-color: #020617;
+  border-radius: 16px;
 }
 
-/* 3D Interactive Player Card & Zero-Re-Render Holographic Reflection System */
+/* 3D Interactive Player Card & Tactile Press System */
 .player-card-3d {
   --rx: 0deg;
   --ry: 0deg;
   --gx: 50%;
   --gy: 50%;
   --glare-op: 0;
+  border-radius: 20px;
   transform-style: preserve-3d;
   will-change: transform;
   transform: perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(0);
   transition:
-    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .player-card-3d:hover {
-    transform: perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry)) translateY(-4px) scale(1.01);
-    box-shadow:
-      0 28px 60px -16px rgba(0, 0, 0, 0.95),
-      0 0 38px -8px rgba(56, 189, 248, 0.22),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.32);
+    transform: perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry)) translateY(-3px);
+    border-color: #38BDF8;
+    box-shadow: 0 8px 0 #020617, 0 20px 36px -10px rgba(37, 99, 235, 0.28);
   }
 }
 
-/* Mobile Touch 3D Tactile Feedback & Ambient Holographic Foil */
-@media (hover: none) and (pointer: coarse) {
-  .player-card-3d {
-    transform: translateZ(0);
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
-  }
-
-  .player-card-3d:active {
-    transform: scale(0.982) translateY(1px);
-    border-color: rgba(56, 189, 248, 0.5) !important;
-  }
+.player-card-3d:active {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 2px 0 #020617 !important;
 }
 
 .player-card-glare {
@@ -239,13 +232,11 @@
   z-index: 20;
   opacity: var(--glare-op, 0);
   background: radial-gradient(
-    circle 260px at var(--gx, 50%) var(--gy, 50%),
-    rgba(56, 189, 248, 0.22),
-    rgba(255, 255, 255, 0.08) 45%,
-    transparent 75%
+    circle 240px at var(--gx, 50%) var(--gy, 50%),
+    rgba(56, 189, 248, 0.14),
+    transparent 70%
   );
-  mix-blend-mode: screen;
-  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.22s ease;
 }
 
 .player-card-3d:hover .player-card-glare {
@@ -253,113 +244,189 @@
 }
 
 .player-card-sheen {
-  pointer-events: none;
-  position: absolute;
-  inset: -100%;
-  z-index: 19;
-  background: linear-gradient(
-    115deg,
-    transparent 38%,
-    rgba(255, 255, 255, 0.05) 46%,
-    rgba(56, 189, 248, 0.13) 50%,
-    rgba(255, 255, 255, 0.05) 54%,
-    transparent 62%
-  );
-  transform: translateX(-60%) rotate(12deg);
-  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  display: none;
 }
 
-.player-card-3d:hover .player-card-sheen,
-.player-card-3d:active .player-card-sheen {
-  transform: translateX(60%) rotate(12deg);
-}
-
-/* Mobile Native Floating Pill Dock with Safe-Area Support */
+/* Mobile Native Tactile Arcade Dock with Safe-Area Support */
 .glass-mobile-dock {
   position: fixed !important;
   bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
   left: 12px !important;
   right: 12px !important;
   z-index: 50 !important;
-  border-radius: 9999px !important;
+  border-radius: 20px !important;
   padding: 6px !important;
-  background:
-    radial-gradient(120% 100% at 50% 0%, rgba(56, 189, 248, 0.16) 0%, transparent 72%),
-    linear-gradient(180deg, rgba(18, 23, 34, 0.92) 0%, rgba(8, 10, 16, 0.96) 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  box-shadow:
-    0 20px 44px -8px rgba(0, 0, 0, 0.92),
-    0 0 24px -6px rgba(56, 189, 248, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
-  backdrop-filter: blur(26px) saturate(190%) !important;
-  -webkit-backdrop-filter: blur(26px) saturate(190%) !important;
+  background-color: #111827 !important;
+  border: 2px solid #334155 !important;
+  border-bottom-width: 4px !important;
+  border-bottom-color: #020617 !important;
+  box-shadow: 0 8px 0 #020617, 0 18px 36px rgba(2, 6, 23, 0.9) !important;
   transform: translateZ(0);
-  transition:
-    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Primary Action Button - Glossy Institutional Platinum & Sky */
-.btn-primary {
-  background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%);
-  color: #06070A !important;
+/* Primary Action Button - Lime Volt Tactile 3D Arcade Button */
+.btn-primary,
+.arcade-btn-lime {
+  background-color: #22C55E !important;
+  color: #020617 !important;
+  font-family: 'Fredoka', 'Plus Jakarta Sans', sans-serif;
   font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow:
-    0 6px 18px -4px rgba(56, 189, 248, 0.20),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+  border-radius: 14px;
+  border: 2px solid #020617 !important;
+  border-bottom-width: 4px !important;
+  border-bottom-color: #14532D !important;
+  box-shadow: 0 3px 0 #020617;
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.btn-primary:hover {
-  background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%);
-  transform: translateY(-1.5px);
-  box-shadow:
-    0 12px 26px -4px rgba(56, 189, 248, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+.btn-primary:hover,
+.arcade-btn-lime:hover {
+  background-color: #4ADE80 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 #020617;
 }
 
-.btn-primary:active {
-  transform: translateY(0px) scale(0.975);
+.btn-primary:active,
+.arcade-btn-lime:active {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 1px 0 #020617 !important;
 }
 
-/* Secondary Glossy Glass Accent Button */
-.btn-gold {
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.16) 0%, rgba(56, 189, 248, 0.06) 100%);
+/* Secondary Electric Cobalt Tactile 3D Button */
+.btn-gold,
+.arcade-btn-cobalt {
+  background-color: #2563EB !important;
+  color: #F8FAFC !important;
+  font-family: 'Fredoka', 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid #38BDF8 !important;
+  border-bottom-width: 4px !important;
+  border-bottom-color: #1E3A8A !important;
+  box-shadow: 0 3px 0 #020617;
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.btn-gold:hover,
+.arcade-btn-cobalt:hover {
+  background-color: #3B82F6 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 #020617;
+}
+
+.btn-gold:active,
+.arcade-btn-cobalt:active {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 1px 0 #020617 !important;
+}
+
+/* Canary Pop Tactile 3D Button */
+.arcade-btn-canary {
+  background-color: #FACC15 !important;
+  color: #020617 !important;
+  font-family: 'Fredoka', 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid #020617 !important;
+  border-bottom-width: 4px !important;
+  border-bottom-color: #A16207 !important;
+  box-shadow: 0 3px 0 #020617;
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.arcade-btn-canary:hover {
+  background-color: #FDE047 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 #020617;
+}
+
+.arcade-btn-canary:active {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 1px 0 #020617 !important;
+}
+
+/* Bubblegum Coral Tactile 3D Button */
+.arcade-btn-coral {
+  background-color: #F43F5E !important;
+  color: #FFFFFF !important;
+  font-family: 'Fredoka', 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid #020617 !important;
+  border-bottom-width: 4px !important;
+  border-bottom-color: #881337 !important;
+  box-shadow: 0 3px 0 #020617;
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.arcade-btn-coral:active {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 1px 0 #020617 !important;
+}
+
+/* Iris Violet Tactile 3D Button */
+.arcade-btn-violet {
+  background-color: #8B5CF6 !important;
+  color: #FFFFFF !important;
+  font-family: 'Fredoka', 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid #020617 !important;
+  border-bottom-width: 4px !important;
+  border-bottom-color: #4C1D95 !important;
+  box-shadow: 0 3px 0 #020617;
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.arcade-btn-violet:active {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 1px 0 #020617 !important;
+}
+
+/* Tactile Keypad / Secondary Slate Button */
+.arcade-key {
+  background-color: #1E293B;
   color: #F8FAFC;
-  font-weight: 700;
-  border: 1px solid rgba(56, 189, 248, 0.28);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow:
-    0 6px 18px -4px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  border: 2px solid #334155;
+  border-bottom-width: 4px;
+  border-bottom-color: #020617;
+  border-radius: 14px;
+  box-shadow: 0 3px 0 #020617;
+  transition: all 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.btn-gold:hover {
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.24) 0%, rgba(56, 189, 248, 0.10) 100%);
-  border-color: rgba(56, 189, 248, 0.45);
+.arcade-key:hover:not(:disabled) {
+  background-color: #2563EB;
+  border-color: #38BDF8;
+  border-bottom-color: #1E3A8A;
+  color: #FFFFFF;
   transform: translateY(-1.5px);
 }
 
-.btn-gold:active {
-  transform: translateY(0px) scale(0.975);
+.arcade-key:active:not(:disabled) {
+  transform: translateY(2px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow: 0 1px 0 #020617 !important;
 }
 
-/* Subtle Architectural Grid Overlay */
-.bg-scholar-grid {
-  background-size: 48px 48px;
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+/* 20px Micro-Dot Pattern Canvas */
+.bg-scholar-grid,
+.bg-arcade-dots {
+  background-color: #080C16;
+  background-image: radial-gradient(#1E293B 1.5px, transparent 1.5px);
+  background-size: 20px 20px;
 }
 
-/* Smooth GPU-Composited Page, Section, Scroll & Modal Transitions (No expensive blur filter) */
+/* Springy View & Modal Enter Animations */
 @keyframes viewEnter {
   0% {
     opacity: 0;
-    transform: translate3d(0, 8px, 0) scale(0.995);
+    transform: translate3d(0, 10px, 0) scale(0.99);
   }
   100% {
     opacity: 1;
@@ -370,7 +437,7 @@
 @keyframes modalEnter {
   0% {
     opacity: 0;
-    transform: translate3d(0, 14px, 0) scale(0.97);
+    transform: translate3d(0, 16px, 0) scale(0.96);
   }
   100% {
     opacity: 1;
@@ -380,39 +447,45 @@
 
 @keyframes floatSubtle {
   0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-3px); }
+  50% { transform: translateY(-4px); }
 }
 
 .animate-view {
-  animation: viewEnter 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: viewEnter 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   will-change: transform, opacity;
 }
 
 .animate-modal {
-  animation: modalEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalEnter 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   will-change: transform, opacity;
 }
 
-/* Executive Dark Carbon Surface Harmonization & Podium Reveal Animations */
-.bg-zinc-950, .bg-slate-950 { background-color: #080A0F !important; }
-.bg-zinc-950\/90, .bg-slate-950\/90 { background-color: rgba(8, 10, 15, 0.92) !important; }
-.bg-zinc-950\/80, .bg-slate-950\/80 { background-color: rgba(8, 10, 15, 0.84) !important; }
-.bg-zinc-900, .bg-slate-900 { background-color: rgba(16, 19, 27, 0.85) !important; }
-.bg-zinc-900\/90, .bg-slate-900\/90 { background-color: rgba(16, 19, 27, 0.90) !important; }
-.bg-zinc-900\/80, .bg-slate-900\/80 { background-color: rgba(16, 19, 27, 0.80) !important; }
-.bg-zinc-900\/70, .bg-slate-900\/70 { background-color: rgba(16, 19, 27, 0.70) !important; }
-.bg-zinc-900\/60, .bg-slate-900\/60 { background-color: rgba(16, 19, 27, 0.60) !important; }
-.bg-zinc-800, .bg-slate-800 { background-color: rgba(28, 33, 45, 0.85) !important; }
-.border-zinc-800, .border-slate-800 { border-color: rgba(255, 255, 255, 0.08) !important; }
-.border-zinc-800\/80, .border-slate-800\/80, .border-slate-800\/90 { border-color: rgba(255, 255, 255, 0.08) !important; }
-.border-zinc-700, .border-slate-700 { border-color: rgba(255, 255, 255, 0.14) !important; }
+/* Dark Arcade Surface Harmonization */
+.bg-zinc-950, .bg-slate-950 { background-color: #080C16 !important; }
+.bg-zinc-950\/90, .bg-slate-950\/90 { background-color: rgba(8, 12, 22, 0.94) !important; }
+.bg-zinc-950\/80, .bg-slate-950\/80 { background-color: rgba(8, 12, 22, 0.88) !important; }
+.bg-zinc-900, .bg-slate-900 { background-color: #111827 !important; }
+.bg-zinc-900\/90, .bg-slate-900\/90 { background-color: rgba(17, 24, 39, 0.94) !important; }
+.bg-zinc-900\/80, .bg-slate-900\/80 { background-color: rgba(17, 24, 39, 0.88) !important; }
+.bg-zinc-900\/70, .bg-slate-900\/70 { background-color: rgba(17, 24, 39, 0.80) !important; }
+.bg-zinc-900\/60, .bg-slate-900\/60 { background-color: rgba(17, 24, 39, 0.72) !important; }
+.bg-zinc-800, .bg-slate-800 { background-color: #1E293B !important; }
+.border-zinc-800, .border-slate-800 { border-color: #1E293B !important; }
+.border-zinc-800\/80, .border-slate-800\/80, .border-slate-800\/90 { border-color: #1E293B !important; }
+.border-zinc-700, .border-slate-700 { border-color: #334155 !important; }
+
+/* Zero-Orange Enforcement: Remap any orange utilities to Canary Pop (#FACC15) or Bubblegum Coral (#F43F5E) */
+.text-orange-300, .text-orange-400, .text-orange-500 { color: #FACC15 !important; }
+.bg-orange-400, .bg-orange-500, .bg-orange-600 { background-color: #FACC15 !important; color: #020617 !important; }
+.bg-orange-500\/10, .bg-orange-500\/15, .bg-orange-500\/20 { background-color: rgba(250, 204, 21, 0.14) !important; }
+.border-orange-400, .border-orange-500, .border-orange-500\/30, .border-orange-500\/40 { border-color: rgba(250, 204, 21, 0.45) !important; }
 
 .curtain-fabric {
   background: repeating-linear-gradient(
     90deg,
-    #07090E 0px,
-    #111520 28px,
-    #05070B 56px
+    #080C16 0px,
+    #111827 28px,
+    #050811 56px
   );
   box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.92);
 }
@@ -423,7 +496,7 @@
 }
 
 .animate-podium-rise {
-  animation: podiumSpringUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: podiumSpringUp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 @keyframes confettiFall {
@@ -438,30 +511,6 @@
   height: 14px;
   border-radius: 2px;
   animation: confettiFall linear infinite;
-}
-
-/* Boxy Gamified Command Deck Utilities */
-.box-arena-panel {
-  background: linear-gradient(170deg, rgba(17, 21, 31, 0.94) 0%, rgba(9, 11, 17, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.90), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.box-leader-gold {
-  background:
-    radial-gradient(110% 70% at 50% 0%, rgba(245, 158, 11, 0.14) 0%, transparent 65%),
-    linear-gradient(168deg, rgba(24, 24, 34, 0.95) 0%, rgba(10, 11, 17, 0.98) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.48);
-  box-shadow:
-    0 22px 48px -16px rgba(0, 0, 0, 0.92),
-    0 0 32px -12px rgba(245, 158, 11, 0.25),
-    inset 0 1px 0 rgba(251, 191, 36, 0.35);
-}
-
-.box-metric-cell {
-  background: rgba(7, 9, 15, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -283,7 +283,7 @@ export const ArenaGuideModal: React.FC<ArenaGuideModalProps> = ({
                   </div>
 
                   <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
-                    <div className="flex items-center justify-between font-bold text-orange-300">
+                    <div className="flex items-center justify-between font-bold text-yellow-300">
                       <span className="flex items-center gap-1.5">
                         <Volume2 className="w-3.5 h-3.5" />
                         <span>Sound Horn Trap</span>

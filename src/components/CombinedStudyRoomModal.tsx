@@ -1770,7 +1770,7 @@ export const CombinedStudyRoomModal: React.FC<CombinedStudyRoomModalProps> = ({
           <div
             className={`p-4 rounded-2xl border transition-all space-y-3.5 ${
               challengeEnabled
-                ? 'bg-gradient-to-r from-amber-500/12 via-orange-500/8 to-zinc-950 border-amber-400/40'
+                ? 'bg-gradient-to-r from-amber-500/12 via-yellow-500/8 to-zinc-950 border-amber-400/40'
                 : 'bg-zinc-950/70 border-white/10'
             }`}
           >

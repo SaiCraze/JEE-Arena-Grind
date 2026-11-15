@@ -16,6 +16,7 @@ import {
   disableNetwork
 } from 'firebase/firestore';
 import fs from 'fs';
+import crypto from 'crypto';
 import * as webpushNamespace from 'web-push';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -93,7 +94,71 @@ const ai = new GoogleGenAI({
 const DISK_STORE_PATH = new URL('./.arena-live-store.json', import.meta.url);
 const PUSH_SUBS_PATH = new URL('./.push-subscriptions.json', import.meta.url);
 const PAUSED_PUSH_SUBS_PATH = new URL('./.paused-push-subscriptions.json', import.meta.url);
+const AUTH_RATE_LIMITS_PATH = new URL('./.auth-rate-limits.json', import.meta.url);
 const PERMANENT_DELETED_MEMBER_IDS = new Set<string>(['nishchit_590']);
+const ADMIN_SERVER_PASSCODE = process.env.ADMIN_PASSCODE || '2659';
+const SESSION_HMAC_SECRET = process.env.SESSION_SECRET || 'jee-grind-arena-tactile-vault-secret-2026';
+
+interface AuthRateLimitEntry {
+  attempts: number;
+  lockoutUntil: number;
+  lastAttemptAt: number;
+}
+
+function loadAuthRateLimits(): Record<string, AuthRateLimitEntry> {
+  try {
+    if (fs.existsSync(AUTH_RATE_LIMITS_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(AUTH_RATE_LIMITS_PATH, 'utf-8'));
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {}
+  return {};
+}
+
+let authRateLimits: Record<string, AuthRateLimitEntry> = loadAuthRateLimits();
+
+function saveAuthRateLimits() {
+  try {
+    fs.writeFileSync(AUTH_RATE_LIMITS_PATH, JSON.stringify(authRateLimits, null, 2), 'utf-8');
+  } catch {}
+}
+
+function getClientAuthKey(req: express.Request, deviceId?: string): string {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = forwarded || req.ip || 'local';
+  const cleanDevice = String(deviceId || req.headers['x-device-id'] || 'default').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  return `${ip}::${cleanDevice}`;
+}
+
+function timingSafePinMatch(candidate: string, target: string): boolean {
+  const a = Buffer.from(String(candidate || '').padEnd(16, '\0'), 'utf-8');
+  const b = Buffer.from(String(target || '').padEnd(16, '\0'), 'utf-8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function createSignedSessionToken(memberId: string, role: string): string {
+  const issuedAt = Date.now();
+  const payload = `${memberId}.${role}.${issuedAt}`;
+  const sig = crypto.createHmac('sha256', SESSION_HMAC_SECRET).update(payload).digest('hex').slice(0, 32);
+  return `${payload}.${sig}`;
+}
+
+function verifySignedSessionToken(token: string): { valid: boolean; memberId?: string; role?: string } {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 4) return { valid: false };
+    const [memberId, role, issuedAtStr, sig] = parts;
+    const payload = `${memberId}.${role}.${issuedAtStr}`;
+    const expectedSig = crypto.createHmac('sha256', SESSION_HMAC_SECRET).update(payload).digest('hex').slice(0, 32);
+    const a = Buffer.from(sig, 'utf-8');
+    const b = Buffer.from(expectedSig, 'utf-8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return { valid: false };
+    return { valid: true, memberId, role };
+  } catch {
+    return { valid: false };
+  }
+}
 
 function loadPersistedPushSubs(): any[] {
   try {
@@ -3063,6 +3128,180 @@ app.get('/sw.js', (_req, res) => {
   res.setHeader('Service-Worker-Allowed', '/');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile('public/sw.js', { root: '.' });
+});
+
+// Auth Rate-Limit & Session Token Verification Endpoints
+app.get('/api/auth/status', (req, res) => {
+  const deviceId = String(req.query.deviceId || '');
+  const token = String(req.query.token || req.headers.authorization?.replace('Bearer ', '') || '');
+  const key = getClientAuthKey(req, deviceId);
+  const now = Date.now();
+  const entry = authRateLimits[key];
+
+  let lockoutSecondsRemaining = 0;
+  let attempts = 0;
+  if (entry) {
+    if (entry.lockoutUntil > now) {
+      lockoutSecondsRemaining = Math.ceil((entry.lockoutUntil - now) / 1000);
+    } else if (now - entry.lastAttemptAt > 15 * 60 * 1000) {
+      delete authRateLimits[key];
+      saveAuthRateLimits();
+    }
+    attempts = entry.attempts || 0;
+  }
+
+  const sessionCheck = token ? verifySignedSessionToken(token) : { valid: false };
+  return res.json({
+    locked: lockoutSecondsRemaining > 0,
+    lockoutSecondsRemaining,
+    attempts,
+    maxAttemptsBeforeCooldown: 4,
+    sessionValid: sessionCheck.valid,
+    memberId: sessionCheck.memberId || null,
+    role: sessionCheck.role || null
+  });
+});
+
+app.post('/api/auth/verify-pin', (req, res) => {
+  const { pin, category, target, nameInput, deviceId } = req.body || {};
+  const cleanPin = String(pin || '').replace(/[^0-9]/g, '').slice(0, 4);
+  const key = getClientAuthKey(req, deviceId);
+  const now = Date.now();
+
+  const existing = authRateLimits[key] || { attempts: 0, lockoutUntil: 0, lastAttemptAt: 0 };
+  if (existing.lockoutUntil > now) {
+    const remaining = Math.ceil((existing.lockoutUntil - now) / 1000);
+    return res.status(429).json({
+      success: false,
+      locked: true,
+      lockoutSecondsRemaining: remaining,
+      attempts: existing.attempts,
+      error: `Too many failed PIN attempts. Terminal locked for ${remaining}s.`
+    });
+  }
+
+  // Reset stale attempt counter if over 15 minutes have elapsed since last wrong try
+  if (existing.lastAttemptAt > 0 && now - existing.lastAttemptAt > 15 * 60 * 1000) {
+    existing.attempts = 0;
+    existing.lockoutUntil = 0;
+  }
+
+  const trimmedName = String(nameInput || '').trim().toLowerCase();
+  const rawMembers: any[] = Array.isArray(cachedBootstrap?.payload?.members)
+    ? cachedBootstrap.payload.members
+    : INITIAL_FIRESTORE_MEMBERS;
+  const storeMembers: any[] = rawMembers.filter((m: any) => m && !m.isArchived);
+  const storeTeachers: any[] = Array.isArray(cachedBootstrap?.payload?.teachers)
+    ? cachedBootstrap.payload.teachers
+    : [];
+
+  let matchedMemberId: string | null = null;
+  let matchedRole: 'admin' | 'teacher' | 'student' = 'student';
+  let customError = '';
+
+  if (timingSafePinMatch(cleanPin, ADMIN_SERVER_PASSCODE)) {
+    if (category === 'admin' || target === 'admin' || trimmedName === 'admin') {
+      matchedMemberId = 'admin';
+      matchedRole = 'admin';
+    } else if (trimmedName) {
+      const byName = storeMembers.find(
+        (m: any) => String(m.name || '').toLowerCase() === trimmedName || String(m.id || '').toLowerCase() === trimmedName
+      );
+      matchedMemberId = byName ? byName.id : 'admin';
+      matchedRole = byName ? 'student' : 'admin';
+    } else {
+      matchedMemberId = 'admin';
+      matchedRole = 'admin';
+    }
+  } else if (category === 'admin' || target === 'admin') {
+    customError = 'Invalid Administrator Passcode.';
+  } else if (category === 'teachers' || String(target || '').startsWith('teacher_')) {
+    const matchedTeacher = storeTeachers.find((t: any) => timingSafePinMatch(cleanPin, String(t.passcode || '')));
+    if (matchedTeacher) {
+      matchedMemberId = matchedTeacher.id;
+      matchedRole = 'teacher';
+    } else {
+      customError = 'Incorrect Faculty PIN.';
+    }
+  } else {
+    if (trimmedName.includes('nishchit') || cleanPin === '2222' || cleanPin === '0619') {
+      customError = 'Access Denied: This account has been archived from the Arena.';
+    } else if (trimmedName) {
+      const targetMem = storeMembers.find(
+        (m: any) => String(m.name || '').toLowerCase() === trimmedName || String(m.id || '').toLowerCase() === trimmedName
+      );
+      if (targetMem && timingSafePinMatch(cleanPin, String(targetMem.passcode || ''))) {
+        if (targetMem.approvalStatus === 'pending') {
+          customError = `Account for "${targetMem.name}" is awaiting Admin approval.`;
+        } else if (targetMem.approvalStatus === 'rejected') {
+          customError = `Sign-up request for "${targetMem.name}" was declined.`;
+        } else {
+          matchedMemberId = targetMem.id;
+          matchedRole = 'student';
+        }
+      }
+    } else {
+      const pinMatches = storeMembers.filter((m: any) => timingSafePinMatch(cleanPin, String(m.passcode || '')));
+      if (pinMatches.length === 1) {
+        const targetMem = pinMatches[0];
+        if (targetMem.approvalStatus === 'pending') {
+          customError = `Account for "${targetMem.name}" is awaiting Admin approval.`;
+        } else if (targetMem.approvalStatus === 'rejected') {
+          customError = `Sign-up request for "${targetMem.name}" was declined.`;
+        } else {
+          matchedMemberId = targetMem.id;
+          matchedRole = 'student';
+        }
+      }
+    }
+  }
+
+  if (matchedMemberId) {
+    delete authRateLimits[key];
+    saveAuthRateLimits();
+    const token = createSignedSessionToken(matchedMemberId, matchedRole);
+    return res.json({
+      success: true,
+      memberId: matchedMemberId,
+      role: matchedRole,
+      sessionToken: token,
+      locked: false,
+      lockoutSecondsRemaining: 0,
+      attempts: 0
+    });
+  }
+
+  // Record failed attempt & compute progressive cooldown
+  const nextAttempts = (existing.attempts || 0) + 1;
+  let cooldownSecs = 0;
+  if (nextAttempts >= 8) {
+    cooldownSecs = 600; // 10 minutes
+  } else if (nextAttempts >= 6) {
+    cooldownSecs = 120; // 2 minutes
+  } else if (nextAttempts >= 4) {
+    cooldownSecs = 30; // 30 seconds
+  }
+
+  const lockoutUntil = cooldownSecs > 0 ? now + cooldownSecs * 1000 : 0;
+  authRateLimits[key] = {
+    attempts: nextAttempts,
+    lockoutUntil,
+    lastAttemptAt: now
+  };
+  saveAuthRateLimits();
+
+  const remainingBeforeLock = Math.max(0, 4 - nextAttempts);
+  return res.status(cooldownSecs > 0 ? 429 : 401).json({
+    success: false,
+    locked: cooldownSecs > 0,
+    lockoutSecondsRemaining: cooldownSecs,
+    attempts: nextAttempts,
+    remainingBeforeLock,
+    error:
+      cooldownSecs > 0
+        ? `Security shield triggered after ${nextAttempts} failed tries. Locked for ${cooldownSecs}s.`
+        : customError || `Incorrect 4-digit PIN (${remainingBeforeLock} attempt${remainingBeforeLock === 1 ? '' : 's'} left before security cooldown).`
+  });
 });
 
 // Vite middleware in dev or static files in production

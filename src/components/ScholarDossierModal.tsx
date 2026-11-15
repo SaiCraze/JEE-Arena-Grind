@@ -746,7 +746,7 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
                             : isSilver
                             ? 'bg-zinc-900/90 border-zinc-600/70'
                             : isBronze
-                            ? 'bg-orange-500/10 border-orange-400/35'
+                            ? 'bg-yellow-500/10 border-yellow-400/35'
                             : 'bg-white/[0.03] border-white/10'
                         }`}
                       >
@@ -761,7 +761,7 @@ export const ScholarDossierModal: React.FC<ScholarDossierModalProps> = ({
                                 : isSilver
                                 ? 'bg-zinc-300 text-slate-950'
                                 : isBronze
-                                ? 'bg-orange-400/25 text-orange-200 border border-orange-400/40'
+                                ? 'bg-yellow-400/25 text-yellow-200 border border-yellow-400/40'
                                 : 'bg-white/10 text-slate-300'
                             }`}
                           >

@@ -202,7 +202,7 @@ export const WarfareHub: React.FC<WarfareHubProps> = ({
       title: 'Sound Horn',
       cost: 200,
       icon: Volume2,
-      accent: 'text-orange-300 border-orange-400/35 bg-orange-500/10',
+      accent: 'text-yellow-300 border-yellow-400/35 bg-yellow-500/10',
       description:
         'Arm a stadium airhorn trap on a target. Blasts an obnoxious airhorn on their screen the next time they finish a timer.',
       cleanseRule: 'Trigger: Detonates automatically on target next timer completion.'
@@ -379,7 +379,7 @@ export const WarfareHub: React.FC<WarfareHubProps> = ({
             <div
               className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                 weeklyDutyPending
-                  ? 'bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-orange-500/15 border-amber-400/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]'
+                  ? 'bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-yellow-500/15 border-amber-400/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]'
                   : 'bg-emerald-500/10 border-emerald-400/30'
               }`}
             >
@@ -1188,7 +1188,7 @@ export const WarfareHub: React.FC<WarfareHubProps> = ({
                   Boolean(kingPlayer?.bountyShieldUntil && kingPlayer.bountyShieldUntil > Date.now()) ||
                   todayAmbushes.some(a => a.ambusherId === currentUser.id)
                     ? 'bg-zinc-900 border border-zinc-800 text-zinc-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 cursor-pointer shadow-lg shadow-amber-500/20'
+                    : 'bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 cursor-pointer shadow-lg shadow-amber-500/20'
                 }`}
               >
                 <Target className="w-4 h-4" />

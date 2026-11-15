@@ -48,6 +48,7 @@ import {
   PWAInstallGuideModal,
   PWAOfflineBanner
 } from './components/PWAInstallComponents';
+import { ShowcaseLandingPage } from './components/ShowcaseLandingPage';
 import {
   getLocalDateString,
   parseLocalDateStr,
@@ -230,7 +231,7 @@ const BADGES: BadgeDefinition[] = [
     title: '100 Hours Club',
     description: 'Log over 100 cumulative hours of focused study.',
     icon: '🕒',
-    color: 'from-amber-400 to-orange-500',
+    color: 'from-amber-400 to-yellow-500',
     check: (m, sessions) => {
       const totalMins = sessions.filter(s => s.memberId === m.id).reduce((a, b) => a + (Number(b.duration) || 0), 0);
       const totalHrs = Math.floor(totalMins / 60);
@@ -254,7 +255,7 @@ const BADGES: BadgeDefinition[] = [
     title: 'Streak King',
     description: 'Maintain a 5+ day consecutive login streak.',
     icon: '🔥',
-    color: 'from-orange-500 to-rose-500',
+    color: 'from-yellow-500 to-rose-500',
     check: (m, memSessions) => {
       const streak = computeMemberStreak(m, (memSessions || []).filter(s => s.memberId === m.id));
       return { unlocked: streak >= 5, progress: streak, target: 5, label: `${streak}/5 days` };
@@ -320,7 +321,7 @@ const BADGES: BadgeDefinition[] = [
     title: 'Weekly Sprint Champion',
     description: 'Crowned #1 Overall Winner in a concluded Weekly Sprint Cycle.',
     icon: '👑',
-    color: 'from-amber-300 via-amber-400 to-orange-500',
+    color: 'from-amber-300 via-amber-400 to-yellow-500',
     check: (m) => {
       const wins = DEFAULT_SPRINT_HISTORY.filter(s => s.winnerId === m.id || s.winnerName?.toLowerCase() === m.name?.toLowerCase()).length;
       return { unlocked: wins >= 1, progress: wins, target: 1, label: wins >= 1 ? `${wins}x Winner` : '0/1 win' };
@@ -1020,14 +1021,62 @@ function pickNextWeeklySleeperAgent(
 export default function App() {
   const pwa = usePWAInstall();
 
-  // Auth & Role State
-  const [activeMemberId, setActiveMemberId] = useState<string | null>(() => {
-    const saved = localStorage.getItem('jee_arena_active_id');
-    if (!saved || saved.toLowerCase().includes('nishchit')) {
-      localStorage.removeItem('jee_arena_active_id');
-      return null;
+  // Persistent Device Identifier for Rate-Limiting & Trusted Auto-Login
+  const [deviceAuthId] = useState<string>(() => {
+    try {
+      const existing = localStorage.getItem('jee_arena_device_auth_id');
+      if (existing) return existing;
+      const generated = 'dev_' + Math.random().toString(36).slice(2, 12) + '_' + Date.now().toString(36);
+      localStorage.setItem('jee_arena_device_auth_id', generated);
+      return generated;
+    } catch {
+      return 'dev_local';
     }
-    return saved;
+  });
+
+  // Remembered Scholar ID on this device (allows automatic login on boot + 1-tap re-entry after Switch Account)
+  const [rememberedDeviceMemberId, setRememberedDeviceMemberId] = useState<string | null>(() => {
+    try {
+      const candidates = [
+        localStorage.getItem('jee_arena_trusted_device_member'),
+        localStorage.getItem('jee_arena_active_id'),
+        localStorage.getItem('jee_arena_active_member_id'),
+        localStorage.getItem('jee_arena_teacher_id')
+      ];
+      for (const c of candidates) {
+        if (c && c !== 'guest' && !c.toLowerCase().includes('nishchit')) {
+          return c;
+        }
+      }
+    } catch {}
+    return null;
+  });
+
+  // Auth & Role State — Automatically logs in existing people unless they clicked "Switch Account" in this tab session
+  const [activeMemberId, setActiveMemberId] = useState<string | null>(() => {
+    try {
+      const manualSwitchActive = sessionStorage.getItem('jee_arena_manual_switch') === 'true';
+      const directSaved = localStorage.getItem('jee_arena_active_id');
+      if (directSaved && !directSaved.toLowerCase().includes('nishchit')) {
+        return directSaved;
+      }
+      if (!manualSwitchActive) {
+        const autoCandidates = [
+          localStorage.getItem('jee_arena_trusted_device_member'),
+          localStorage.getItem('jee_arena_active_member_id'),
+          localStorage.getItem('jee_arena_teacher_id'),
+          localStorage.getItem('jee_arena_admin') === 'true' ? 'admin' : null
+        ];
+        for (const candidate of autoCandidates) {
+          if (candidate && candidate !== 'guest' && !candidate.toLowerCase().includes('nishchit')) {
+            localStorage.setItem('jee_arena_active_id', candidate);
+            return candidate;
+          }
+        }
+      }
+      localStorage.removeItem('jee_arena_active_id');
+    } catch {}
+    return null;
   });
   const isGuestMode = activeMemberId === 'guest';
   const [guestDemoState, setGuestDemoState] = useState<GuestDemoState | null>(() => {
@@ -1055,6 +1104,48 @@ export default function App() {
   const [signUpError, setSignUpError] = useState<string>('');
   const [isSigningUp, setIsSigningUp] = useState<boolean>(false);
   const [signUpPendingApprovalName, setSignUpPendingApprovalName] = useState<string | null>(null);
+
+  // Brute-Force PIN Guessing Rate-Limit State (Client + Server Synchronized)
+  const [failedPinAttempts, setFailedPinAttempts] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('jee_arena_pin_lockout_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.attempts === 'number') {
+          if (parsed.lastAttemptAt && Date.now() - parsed.lastAttemptAt > 15 * 60 * 1000) {
+            return 0;
+          }
+          return parsed.attempts;
+        }
+      }
+    } catch {}
+    return 0;
+  });
+  const [lockoutUntilTs, setLockoutUntilTs] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('jee_arena_pin_lockout_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.lockoutUntil === 'number' && parsed.lockoutUntil > Date.now()) {
+          return parsed.lockoutUntil;
+        }
+      }
+    } catch {}
+    return 0;
+  });
+  const [lockoutSecondsRemaining, setLockoutSecondsRemaining] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('jee_arena_pin_lockout_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.lockoutUntil === 'number' && parsed.lockoutUntil > Date.now()) {
+          return Math.ceil((parsed.lockoutUntil - Date.now()) / 1000);
+        }
+      }
+    } catch {}
+    return 0;
+  });
+  const [isVerifyingPin, setIsVerifyingPin] = useState<boolean>(false);
   const [inspectedScholarId, setInspectedScholarId] = useState<string | null>(null);
   const [card3dTransforms, setCard3dTransforms] = useState<
     Record<string, { rotateX: number; rotateY: number; glareX: number; glareY: number }>
@@ -6332,183 +6423,321 @@ export default function App() {
       .catch(() => {});
   };
 
-  const verifyPinCode = (codeToVerify: string, target = loginTarget) => {
-    setLoginError('');
-    const trimmedName = signInNameInput.trim().toLowerCase();
-
-    if (codeToVerify === ADMIN_PASSCODE) {
-      setIsAdminUnlocked(true);
-      localStorage.setItem('jee_arena_admin', 'true');
-      if (tuitionVaultCategory === 'admin' || target === 'admin' || trimmedName === 'admin') {
-        setActiveMemberId('admin');
-        localStorage.setItem('jee_arena_active_id', 'admin');
-        setActiveTab('admin');
-      } else {
-        const activeList = members.length > 0 ? members : DEFAULT_MEMBERS.filter(m => !m.isArchived);
-        const matchedByName = trimmedName
-          ? activeList.find(m => m.name.toLowerCase() === trimmedName || m.id.toLowerCase() === trimmedName)
-          : null;
-        if (trimmedName && !matchedByName && (trimmedName.includes('nishchit') || archivedMemberNamesSet.has(trimmedName))) {
-          setLoginError('🚫 Access Denied: Nishchit has been removed from the Arena and cannot log in.');
-          setPinInput('');
-          return false;
-        }
-        const resolvedId = matchedByName ? matchedByName.id : 'admin';
-        setActiveMemberId(resolvedId);
-        localStorage.setItem('jee_arena_active_id', resolvedId);
-        if (resolvedId !== 'admin') {
-          setLogTargetMember(resolvedId);
-          setExamMemberId(resolvedId);
-          setActiveTab('arena');
-        } else {
-          setActiveTab('admin');
-        }
-      }
-      setPinInput('');
-      handlePostLoginMobileAndNotificationSetup();
-      return true;
+  // Countdown ticker & server status sync for brute-force lockout shield
+  useEffect(() => {
+    if (lockoutUntilTs <= Date.now()) {
+      if (lockoutSecondsRemaining !== 0) setLockoutSecondsRemaining(0);
+      return;
     }
+    const updateRemaining = () => {
+      const rem = Math.max(0, Math.ceil((lockoutUntilTs - Date.now()) / 1000));
+      setLockoutSecondsRemaining(rem);
+    };
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 500);
+    return () => clearInterval(timer);
+  }, [lockoutUntilTs, lockoutSecondsRemaining]);
 
-    if (tuitionVaultCategory === 'admin' || target === 'admin') {
-      setLoginError('Invalid Administrator Passcode.');
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/auth/status?deviceId=${encodeURIComponent(deviceAuthId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.locked && Number(data.lockoutSecondsRemaining) > 0) {
+          const until = Date.now() + Number(data.lockoutSecondsRemaining) * 1000;
+          setLockoutUntilTs(until);
+          setLockoutSecondsRemaining(Number(data.lockoutSecondsRemaining));
+          setFailedPinAttempts(Number(data.attempts) || 4);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceAuthId]);
+
+  const recordFailedPinGuess = (customMessage?: string) => {
+    const now = Date.now();
+    const nextAttempts = failedPinAttempts + 1;
+    let cooldownSecs = 0;
+    if (nextAttempts >= 8) {
+      cooldownSecs = 600; // 10 minutes
+    } else if (nextAttempts >= 6) {
+      cooldownSecs = 120; // 2 minutes
+    } else if (nextAttempts >= 4) {
+      cooldownSecs = 30; // 30 seconds
+    }
+    const nextLockoutUntil = cooldownSecs > 0 ? now + cooldownSecs * 1000 : 0;
+    setFailedPinAttempts(nextAttempts);
+    if (nextLockoutUntil > 0) {
+      setLockoutUntilTs(nextLockoutUntil);
+      setLockoutSecondsRemaining(cooldownSecs);
+    }
+    try {
+      localStorage.setItem(
+        'jee_arena_pin_lockout_state',
+        JSON.stringify({
+          attempts: nextAttempts,
+          lockoutUntil: nextLockoutUntil,
+          lastAttemptAt: now
+        })
+      );
+    } catch {}
+
+    // Also report to server rate-limiter in background
+    fetch('/api/auth/verify-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pin: '9999',
+        category: tuitionVaultCategory,
+        target: loginTarget,
+        nameInput: signInNameInput,
+        deviceId: deviceAuthId
+      })
+    }).catch(() => {});
+
+    const triesLeft = Math.max(0, 4 - (nextAttempts % 4 === 0 ? 4 : nextAttempts % 4));
+    if (cooldownSecs > 0) {
+      setLoginError(`Security shield triggered after ${nextAttempts} failed tries. Keypad locked for ${cooldownSecs}s.`);
+    } else {
+      setLoginError(
+        customMessage
+          ? `${customMessage} (${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left before security lock)`
+          : `Incorrect 4-digit PIN (${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left before security lock).`
+      );
+    }
+  };
+
+  const resetPinLockoutOnSuccess = (loggedInId: string) => {
+    setFailedPinAttempts(0);
+    setLockoutUntilTs(0);
+    setLockoutSecondsRemaining(0);
+    try {
+      localStorage.removeItem('jee_arena_pin_lockout_state');
+      sessionStorage.removeItem('jee_arena_manual_switch');
+      if (loggedInId && loggedInId !== 'guest') {
+        localStorage.setItem('jee_arena_trusted_device_member', loggedInId);
+        localStorage.setItem('jee_arena_active_member_id', loggedInId);
+        setRememberedDeviceMemberId(loggedInId);
+      }
+    } catch {}
+  };
+
+  const getPinStrengthIssue = (pin: string): string | undefined => {
+    if (!pin || pin.length < 4) return undefined;
+    const blockedWeakPins = new Set([
+      '0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999',
+      '1234', '2345', '3456', '4567', '5678', '6789', '7890',
+      '4321', '9876', '2580', '0852', '1212', '1010', '2020', '0619'
+    ]);
+    if (blockedWeakPins.has(pin)) {
+      return 'Weak PIN detected: avoid repeating or sequential digits (like 1234 or 1111).';
+    }
+    if (/^(\d)\1{3}$/.test(pin)) {
+      return 'All 4 digits cannot be identical.';
+    }
+    return undefined;
+  };
+
+  const pinStrengthHint = useMemo(() => getPinStrengthIssue(signUpPin), [signUpPin]);
+
+  const verifyPinCode = (codeToVerify: string, target = loginTarget) => {
+    if (lockoutUntilTs > Date.now() || lockoutSecondsRemaining > 0) {
+      const rem = Math.max(1, Math.ceil((lockoutUntilTs - Date.now()) / 1000));
+      setLoginError(`Security shield active. Please wait ${rem}s before trying again.`);
       setPinInput('');
       return false;
     }
 
-    if (tuitionVaultCategory === 'teachers' || target.startsWith('teacher_')) {
-      const activeTeacherList = teachers.length > 0 ? teachers : DEFAULT_TEACHERS;
-      const targetTeacher = trimmedName
-        ? activeTeacherList.find(
-            t =>
-              (t.name.toLowerCase().includes(trimmedName) || t.id.toLowerCase() === trimmedName) &&
-              String(t.passcode) === codeToVerify
-          )
-        : activeTeacherList.find(t => String(t.passcode) === codeToVerify || t.id === target);
-      if (targetTeacher && (codeToVerify === String(targetTeacher.passcode) || codeToVerify === ADMIN_PASSCODE)) {
-        setIsAdminUnlocked(false);
-        setAdminPeekStandings(false);
-        localStorage.removeItem('jee_arena_admin');
-        setActiveMemberId(targetTeacher.id);
-        setActiveTeacherId(targetTeacher.id);
-        setSelectedTuitionSubject(targetTeacher.subject);
-        localStorage.setItem('jee_arena_active_id', targetTeacher.id);
-        localStorage.setItem('jee_arena_teacher_id', targetTeacher.id);
-        setActiveTab('arena');
+    setLoginError('');
+    setIsVerifyingPin(true);
+    const trimmedName = signInNameInput.trim().toLowerCase();
+
+    try {
+      if (codeToVerify === ADMIN_PASSCODE) {
+        setIsAdminUnlocked(true);
+        localStorage.setItem('jee_arena_admin', 'true');
+        if (tuitionVaultCategory === 'admin' || target === 'admin' || trimmedName === 'admin') {
+          setActiveMemberId('admin');
+          localStorage.setItem('jee_arena_active_id', 'admin');
+          resetPinLockoutOnSuccess('admin');
+          setActiveTab('admin');
+        } else {
+          const activeList = members.length > 0 ? members : DEFAULT_MEMBERS.filter(m => !m.isArchived);
+          const matchedByName = trimmedName
+            ? activeList.find(m => m.name.toLowerCase() === trimmedName || m.id.toLowerCase() === trimmedName)
+            : null;
+          if (trimmedName && !matchedByName && (trimmedName.includes('nishchit') || archivedMemberNamesSet.has(trimmedName))) {
+            recordFailedPinGuess('Access Denied: Nishchit has been removed from the Arena.');
+            setPinInput('');
+            return false;
+          }
+          const resolvedId = matchedByName ? matchedByName.id : 'admin';
+          setActiveMemberId(resolvedId);
+          localStorage.setItem('jee_arena_active_id', resolvedId);
+          resetPinLockoutOnSuccess(resolvedId);
+          if (resolvedId !== 'admin') {
+            setLogTargetMember(resolvedId);
+            setExamMemberId(resolvedId);
+            setActiveTab('arena');
+          } else {
+            setActiveTab('admin');
+          }
+        }
         setPinInput('');
         handlePostLoginMobileAndNotificationSetup();
         return true;
       }
-      setLoginError('Incorrect Teacher PIN.');
-      setPinInput('');
-      return false;
-    }
 
-    // Hard block removed/archived scholars (including Nishchit and his legacy PINs 2222 / 0619)
-    if (
-      archivedMemberIdsSet.has('nishchit') &&
-      (trimmedName.includes('nishchit') ||
-        target.toLowerCase().includes('nishchit') ||
-        codeToVerify === '2222' ||
-        codeToVerify === '0619')
-    ) {
-      setLoginError('🚫 Access Denied: Nishchit has been removed from the Arena and cannot log in.');
-      setPinInput('');
-      return false;
-    }
+      if (tuitionVaultCategory === 'admin' || target === 'admin') {
+        recordFailedPinGuess('Invalid Administrator Passcode.');
+        setPinInput('');
+        return false;
+      }
 
-    const activeList = members.length > 0 ? members : DEFAULT_MEMBERS.filter(m => !m.isArchived);
+      if (tuitionVaultCategory === 'teachers' || target.startsWith('teacher_')) {
+        const activeTeacherList = teachers.length > 0 ? teachers : DEFAULT_TEACHERS;
+        const targetTeacher = trimmedName
+          ? activeTeacherList.find(
+              t =>
+                (t.name.toLowerCase().includes(trimmedName) || t.id.toLowerCase() === trimmedName) &&
+                String(t.passcode) === codeToVerify
+            )
+          : activeTeacherList.find(t => String(t.passcode) === codeToVerify || t.id === target);
+        if (targetTeacher && (codeToVerify === String(targetTeacher.passcode) || codeToVerify === ADMIN_PASSCODE)) {
+          setIsAdminUnlocked(false);
+          setAdminPeekStandings(false);
+          localStorage.removeItem('jee_arena_admin');
+          setActiveMemberId(targetTeacher.id);
+          setActiveTeacherId(targetTeacher.id);
+          setSelectedTuitionSubject(targetTeacher.subject);
+          localStorage.setItem('jee_arena_active_id', targetTeacher.id);
+          localStorage.setItem('jee_arena_teacher_id', targetTeacher.id);
+          resetPinLockoutOnSuccess(targetTeacher.id);
+          setActiveTab('arena');
+          setPinInput('');
+          handlePostLoginMobileAndNotificationSetup();
+          return true;
+        }
+        recordFailedPinGuess('Incorrect Faculty PIN.');
+        setPinInput('');
+        return false;
+      }
 
-    // Check if an archived scholar is attempting to sign in
-    const archivedMatch = archivedMembers.find(
-      m =>
-        (trimmedName && (m.name.toLowerCase() === trimmedName || m.id.toLowerCase() === trimmedName)) ||
-        (!trimmedName && String(m.passcode) === codeToVerify)
-    );
-    if (archivedMatch) {
-      setLoginError(`🚫 Access Denied: ${archivedMatch.name} has been removed from the Arena and cannot log in.`);
-      setPinInput('');
-      return false;
-    }
+      // Hard block removed/archived scholars (including Nishchit and his legacy PINs 2222 / 0619)
+      if (
+        archivedMemberIdsSet.has('nishchit') &&
+        (trimmedName.includes('nishchit') ||
+          target.toLowerCase().includes('nishchit') ||
+          codeToVerify === '2222' ||
+          codeToVerify === '0619')
+      ) {
+        recordFailedPinGuess('Access Denied: Nishchit has been removed from the Arena.');
+        setPinInput('');
+        return false;
+      }
 
-    // If user typed their name, match by name + PIN
-    if (trimmedName) {
-      const targetMem = activeList.find(
-        m => m.name.toLowerCase() === trimmedName || m.id.toLowerCase() === trimmedName
+      const activeList = members.length > 0 ? members : DEFAULT_MEMBERS.filter(m => !m.isArchived);
+
+      // Check if an archived scholar is attempting to sign in
+      const archivedMatch = archivedMembers.find(
+        m =>
+          (trimmedName && (m.name.toLowerCase() === trimmedName || m.id.toLowerCase() === trimmedName)) ||
+          (!trimmedName && String(m.passcode) === codeToVerify)
       );
-      if (!targetMem) {
-        setLoginError(`No account found for "${signInNameInput.trim()}". Use Sign Up to request access.`);
+      if (archivedMatch) {
+        recordFailedPinGuess(`Access Denied: ${archivedMatch.name} has been removed from the Arena.`);
         setPinInput('');
         return false;
       }
-      if (targetMem.approvalStatus === 'pending') {
-        setLoginError(`⏳ Account for "${targetMem.name}" is awaiting Admin approval. You will be able to sign in once approved.`);
-        setPinInput('');
-        return false;
+
+      // If user typed their name, match by name + PIN
+      if (trimmedName) {
+        const targetMem = activeList.find(
+          m => m.name.toLowerCase() === trimmedName || m.id.toLowerCase() === trimmedName
+        );
+        if (!targetMem) {
+          recordFailedPinGuess(`No account found for "${signInNameInput.trim()}". Use Sign Up to request access.`);
+          setPinInput('');
+          return false;
+        }
+        if (targetMem.approvalStatus === 'pending') {
+          setLoginError(`Account for "${targetMem.name}" is awaiting Admin approval.`);
+          setPinInput('');
+          return false;
+        }
+        if (targetMem.approvalStatus === 'rejected') {
+          setLoginError(`Sign-up request for "${targetMem.name}" was declined by the Administrator.`);
+          setPinInput('');
+          return false;
+        }
+        if (codeToVerify === String(targetMem.passcode)) {
+          setIsAdminUnlocked(false);
+          setAdminPeekStandings(false);
+          localStorage.removeItem('jee_arena_admin');
+          setActiveMemberId(targetMem.id);
+          localStorage.setItem('jee_arena_active_id', targetMem.id);
+          resetPinLockoutOnSuccess(targetMem.id);
+          setLogTargetMember(targetMem.id);
+          setExamMemberId(targetMem.id);
+          updateDailyStreak(targetMem);
+          setActiveTab('arena');
+          setPinInput('');
+          setSignInNameInput('');
+          handlePostLoginMobileAndNotificationSetup();
+          return true;
+        } else {
+          recordFailedPinGuess('Incorrect 4-digit PIN.');
+          setPinInput('');
+          return false;
+        }
       }
-      if (targetMem.approvalStatus === 'rejected') {
-        setLoginError(`Sign-up request for "${targetMem.name}" was declined by the Administrator.`);
-        setPinInput('');
-        return false;
-      }
-      if (codeToVerify === String(targetMem.passcode)) {
+
+      // Otherwise match directly by 4-digit PIN
+      const pinMatches = activeList.filter(m => String(m.passcode) === codeToVerify);
+      if (pinMatches.length === 1) {
+        const targetMem = pinMatches[0];
+        if (targetMem.approvalStatus === 'pending') {
+          setLoginError(`Account for "${targetMem.name}" is awaiting Admin approval.`);
+          setPinInput('');
+          return false;
+        }
+        if (targetMem.approvalStatus === 'rejected') {
+          setLoginError(`Sign-up request for "${targetMem.name}" was declined by the Administrator.`);
+          setPinInput('');
+          return false;
+        }
         setIsAdminUnlocked(false);
         setAdminPeekStandings(false);
         localStorage.removeItem('jee_arena_admin');
         setActiveMemberId(targetMem.id);
         localStorage.setItem('jee_arena_active_id', targetMem.id);
+        resetPinLockoutOnSuccess(targetMem.id);
         setLogTargetMember(targetMem.id);
         setExamMemberId(targetMem.id);
         updateDailyStreak(targetMem);
         setActiveTab('arena');
         setPinInput('');
-        setSignInNameInput('');
         handlePostLoginMobileAndNotificationSetup();
         return true;
-      } else {
-        setLoginError('Incorrect 4-digit PIN.');
+      } else if (pinMatches.length > 1) {
+        setLoginError('Multiple accounts share this PIN. Please enter your Name above.');
         setPinInput('');
         return false;
       }
-    }
 
-    // Otherwise match directly by 4-digit PIN
-    const pinMatches = activeList.filter(m => String(m.passcode) === codeToVerify);
-    if (pinMatches.length === 1) {
-      const targetMem = pinMatches[0];
-      if (targetMem.approvalStatus === 'pending') {
-        setLoginError(`⏳ Account for "${targetMem.name}" is awaiting Admin approval. Please wait for the Administrator to approve your request.`);
-        setPinInput('');
-        return false;
-      }
-      if (targetMem.approvalStatus === 'rejected') {
-        setLoginError(`Sign-up request for "${targetMem.name}" was declined by the Administrator.`);
-        setPinInput('');
-        return false;
-      }
-      setIsAdminUnlocked(false);
-      setAdminPeekStandings(false);
-      localStorage.removeItem('jee_arena_admin');
-      setActiveMemberId(targetMem.id);
-      localStorage.setItem('jee_arena_active_id', targetMem.id);
-      setLogTargetMember(targetMem.id);
-      setExamMemberId(targetMem.id);
-      updateDailyStreak(targetMem);
-      setActiveTab('arena');
-      setPinInput('');
-      handlePostLoginMobileAndNotificationSetup();
-      return true;
-    } else if (pinMatches.length > 1) {
-      setLoginError('Multiple accounts share this PIN. Please enter your Name above.');
+      recordFailedPinGuess('Incorrect 4-digit PIN.');
       setPinInput('');
       return false;
+    } finally {
+      setIsVerifyingPin(false);
     }
-
-    setLoginError('Incorrect 4-digit PIN.');
-    setPinInput('');
-    return false;
   };
 
   const handlePinInputChange = (val: string) => {
+    if (lockoutUntilTs > Date.now() || lockoutSecondsRemaining > 0) return;
     const clean = val.replace(/[^0-9]/g, '').slice(0, 4);
     setPinInput(clean);
     setLoginError('');
@@ -6533,13 +6762,19 @@ export default function App() {
       return;
     }
 
+    const strengthIssue = getPinStrengthIssue(cleanPin);
+    if (strengthIssue) {
+      setSignUpError(strengthIssue);
+      return;
+    }
+
     if (
       cleanName.toLowerCase().includes('nishchit') ||
       archivedMemberNamesSet.has(cleanName.toLowerCase()) ||
       cleanPin === '2222' ||
       cleanPin === '0619'
     ) {
-      setSignUpError('🚫 Access Denied: Nishchit has been removed from the Arena and cannot register.');
+      setSignUpError('Access Denied: Nishchit has been removed from the Arena and cannot register.');
       return;
     }
 
@@ -6610,21 +6845,37 @@ export default function App() {
 
   const handleAdminModalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutUntilTs > Date.now() || lockoutSecondsRemaining > 0) {
+      const rem = Math.max(1, Math.ceil((lockoutUntilTs - Date.now()) / 1000));
+      setAdminModalError(`Too many attempts. Locked for ${rem}s.`);
+      setAdminModalPin('');
+      return;
+    }
     setAdminModalError('');
     if (adminModalPin === ADMIN_PASSCODE) {
       setIsAdminUnlocked(true);
       localStorage.setItem('jee_arena_admin', 'true');
+      resetPinLockoutOnSuccess(activeMemberId || 'admin');
       setShowAdminPassModal(false);
       setAdminModalPin('');
       setActiveTab('admin');
       notify('Admin Command Center Unlocked');
     } else {
-      setAdminModalError('Invalid passcode.');
+      recordFailedPinGuess('Invalid Admin passcode.');
+      const triesLeft = Math.max(0, 4 - ((failedPinAttempts + 1) % 4 === 0 ? 4 : (failedPinAttempts + 1) % 4));
+      setAdminModalError(
+        triesLeft > 0
+          ? `Invalid passcode (${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} before security lock).`
+          : `Too many failed attempts. Security lock activated.`
+      );
       setAdminModalPin('');
     }
   };
 
   const handleLogout = () => {
+    try {
+      sessionStorage.setItem('jee_arena_manual_switch', 'true');
+    } catch {}
     setActiveMemberId(null);
     setGuestDemoState(null);
     setShowGuestGuide(false);
@@ -11862,83 +12113,20 @@ export default function App() {
   const customStyles = `
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: #06070A;
+      background-color: #080C16;
+      background-image: radial-gradient(#1E293B 1.5px, transparent 1.5px);
+      background-size: 20px 20px;
       color: #F8FAFC;
     }
 
     h1, h2, h3, h4, .font-display {
-      font-family: 'Outfit', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      letter-spacing: -0.025em;
+      font-family: 'Fredoka', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: -0.02em;
     }
 
     .font-mono-num {
       font-family: 'JetBrains Mono', monospace;
       font-variant-numeric: tabular-nums;
-    }
-
-    @keyframes viewEnter {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes modalEnter {
-      from { opacity: 0; transform: scale(0.97) translateY(8px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-
-    .animate-view {
-      animation: viewEnter 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .animate-modal {
-      animation: modalEnter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    /* Executive Dark Carbon Surface Harmonization */
-    .bg-zinc-950, .bg-slate-950 { background-color: #080A0F !important; }
-    .bg-zinc-950\\/90, .bg-slate-950\\/90 { background-color: rgba(8, 10, 15, 0.92) !important; }
-    .bg-zinc-950\\/80, .bg-slate-950\\/80 { background-color: rgba(8, 10, 15, 0.84) !important; }
-    .bg-zinc-900, .bg-slate-900 { background-color: rgba(16, 19, 27, 0.85) !important; }
-    .bg-zinc-900\\/90, .bg-slate-900\\/90 { background-color: rgba(16, 19, 27, 0.90) !important; }
-    .bg-zinc-900\\/80, .bg-slate-900\\/80 { background-color: rgba(16, 19, 27, 0.80) !important; }
-    .bg-zinc-900\\/70, .bg-slate-900\\/70 { background-color: rgba(16, 19, 27, 0.70) !important; }
-    .bg-zinc-900\\/60, .bg-slate-900\\/60 { background-color: rgba(16, 19, 27, 0.60) !important; }
-    .bg-zinc-800, .bg-slate-800 { background-color: rgba(28, 33, 45, 0.85) !important; }
-    .border-zinc-800, .border-slate-800 { border-color: rgba(255, 255, 255, 0.08) !important; }
-    .border-zinc-800\\/80, .border-slate-800\\/80, .border-slate-800\\/90 { border-color: rgba(255, 255, 255, 0.08) !important; }
-    .border-zinc-700, .border-slate-700 { border-color: rgba(255, 255, 255, 0.14) !important; }
-
-    .curtain-fabric {
-      background: repeating-linear-gradient(
-        90deg,
-        #07090E 0px,
-        #111520 28px,
-        #05070B 56px
-      );
-      box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.92);
-    }
-
-    @keyframes podiumSpringUp {
-      0% { opacity: 0; transform: translateY(60px) scale(0.96); }
-      100% { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    .animate-podium-rise {
-      animation: podiumSpringUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    }
-
-    @keyframes confettiFall {
-      0% { transform: translateY(-20vh) rotate(0deg); opacity: 1; }
-      100% { transform: translateY(105vh) rotate(720deg); opacity: 0.2; }
-    }
-
-    .confetti-piece {
-      position: absolute;
-      top: -20px;
-      width: 8px;
-      height: 14px;
-      border-radius: 2px;
-      animation: confettiFall linear infinite;
     }
   `;
 
@@ -12006,7 +12194,7 @@ export default function App() {
     }
   };
 
-  // PIN Vault & Sign-Up Screen - Executive Quantitative Access Terminal
+  // Full Showcase Landing Page & Tactile Access Vault for New Users (or when switching accounts)
   const isBlockedOrArchivedActiveUser =
     !activeMemberId ||
     archivedMemberIdsSet.has(activeMemberId) ||
@@ -12014,32 +12202,28 @@ export default function App() {
   if (isBlockedOrArchivedActiveUser) {
     const displayMembers = members.length > 0 ? members : DEFAULT_MEMBERS.filter(m => !m.isArchived);
     const activeGrindersCount = displayMembers.filter(m => m.isGrinding && !(m.stealthUntil && m.stealthUntil > stealthNow)).length;
+    const rememberedScholarObj = rememberedDeviceMemberId
+      ? displayMembers.find(m => m.id === rememberedDeviceMemberId && m.approvalStatus !== 'pending' && m.approvalStatus !== 'rejected') ||
+        (rememberedDeviceMemberId === 'admin' ? { id: 'admin', name: 'Administrator', institute: 'System Control' } : null)
+      : null;
 
     return (
-      <div className="min-h-[100dvh] w-full flex flex-col justify-center p-3 sm:p-6 bg-[#06070A] bg-scholar-grid relative z-[100] overflow-x-hidden antialiased">
+      <div className="min-h-[100dvh] w-full flex flex-col justify-between p-2 sm:p-4 md:p-6 bg-[#080C16] bg-scholar-grid relative z-[100] overflow-x-hidden antialiased">
         <style>{customStyles}</style>
 
         {isQuotaExceeded && showQuotaNotice && (
-          <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500/10 border-b border-amber-500/20 px-3 sm:px-6 py-2 text-xs text-amber-200 flex items-center justify-between gap-3 backdrop-blur-md">
+          <div className="fixed top-0 left-0 right-0 z-50 bg-[#111827] border-b-2 border-[#FACC15] px-3 sm:px-6 py-2 text-xs text-[#FEF08A] flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-[#FACC15] shrink-0" />
               <span className="truncate">
-                Firebase daily write quota reached (Spark free tier limit). Running in local offline mode. Sessions are preserved on this device.
+                Firebase daily write quota reached. Running in local offline sync mode; sessions are preserved on this device.
               </span>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <a
-                href="https://console.firebase.google.com/project/fiery-robot-ksjh2/firestore/databases/ai-studio-f185877a-3655-484c-85a9-d315ecdb03cd/data?openUpgradeDialog=true"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] font-semibold text-amber-300 hover:text-white underline cursor-pointer"
-              >
-                Upgrade / View Quota
-              </a>
               <button
                 type="button"
                 onClick={() => setShowQuotaNotice(false)}
-                className="text-amber-400 hover:text-white p-0.5 rounded cursor-pointer"
+                className="text-[#FACC15] hover:text-white p-0.5 rounded cursor-pointer"
                 title="Dismiss notice"
               >
                 <X className="w-3.5 h-3.5" />
@@ -12048,418 +12232,68 @@ export default function App() {
           </div>
         )}
 
-        {/* Subtle Specular Ambient Lighting */}
-        <div className="pointer-events-none fixed top-[-15%] left-1/3 w-[560px] h-[320px] rounded-full bg-white/[0.035] blur-[140px]" />
-        <div className="pointer-events-none fixed bottom-[-15%] right-1/4 w-[480px] h-[280px] rounded-full bg-emerald-500/[0.03] blur-[140px]" />
-
-        <div className="w-full max-w-4xl my-auto grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4 lg:gap-6 items-stretch z-10">
-          {/* Left 5 Cols: Executive Index Overview (Order 2 on mobile so PIN keypad is first) */}
-          <div className="order-2 lg:order-1 lg:col-span-5 surface-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex flex-col justify-between relative overflow-hidden">
-            <div className="space-y-4 relative z-10">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-b from-white/20 to-white/5 border border-white/20 flex items-center justify-center text-white shadow-inner">
-                    <BarChart3 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 block">
-                      Performance Terminal
-                    </span>
-                    <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white font-display">
-                      JEE Quant Index
-                    </h1>
-                  </div>
-                </div>
-
-                <span className="px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-200 text-[10px] font-mono-num font-semibold flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  <span>{isConnected ? 'LIVE' : 'SYNC'}</span>
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Real-time academic performance index and verified study session terminal. Standardized percentile normalization, sprint leaderboards, and live focus tracking.
-              </p>
-
-              {/* Terminal Status Summary */}
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
-                <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.07]">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Registered Scholars</div>
-                  <div className="text-lg font-bold text-white font-mono-num mt-0.5">{displayMembers.length}</div>
-                </div>
-                <div className="p-3 rounded-2xl bg-black/40 border border-white/[0.07]">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Focus Sessions</div>
-                  <div className="text-lg font-bold text-emerald-400 font-mono-num mt-0.5">
-                    {isRaidBlackoutActive ? 'Sealed' : (activeGrindersCount > 0 ? `${activeGrindersCount} Live` : 'Standby')}
-                  </div>
-                </div>
-              </div>
-
-              {/* New Scholar Sign-Up Callout */}
-              <div className="p-3.5 rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/20 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>New to the Arena?</span>
-                  </span>
-                  <span className="text-[10px] font-mono-num text-emerald-400/90 font-semibold">OPEN REGISTRATION</span>
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Create your scholar profile with a custom 4-digit PIN to log verified study sessions, track mock exams, and compete on the leaderboard.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTuitionVaultCategory('signup');
-                    setSignUpError('');
-                    setLoginError('');
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all cursor-pointer"
-                >
-                  Create Scholar Account →
-                </button>
-              </div>
-            </div>
-
-            {/* Guest Interactive Demo Mode */}
-            <div className="pt-4 mt-4 border-t border-white/[0.08] space-y-2.5 relative z-10">
-              <button
-                type="button"
-                onClick={enterGuestDemoMode}
-                className="w-full py-2.5 px-3.5 rounded-2xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/35 text-sky-100 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
-              >
-                <Compass className="w-4 h-4 text-sky-300" />
-                <span>Launch Interactive Demo &amp; Guide</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Right 7 Cols: PIN Sign-In & Sign-Up Terminal (Order 1 on mobile for instant thumb access) */}
-          <div className="order-1 lg:order-2 lg:col-span-7 surface-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex flex-col justify-between relative overflow-hidden">
-            <div className="space-y-3.5 sm:space-y-4 relative z-10">
-              {/* Mobile Compact App Header Banner inside PIN Terminal */}
-              <div className="lg:hidden flex items-center justify-between gap-2 pb-2.5 border-b border-white/[0.07]">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-white/20 to-white/5 border border-white/20 flex items-center justify-center text-white shrink-0">
-                    <BarChart3 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-white font-display leading-tight">JEE Grind Arena</div>
-                    <div className="text-[10px] text-slate-400 font-mono-num">
-                      {displayMembers.length} Scholars · {isRaidBlackoutActive ? 'Blackout' : (activeGrindersCount > 0 ? `${activeGrindersCount} Live` : 'Online')}
-                    </div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/10 text-slate-200 text-[9.5px] font-mono-num font-semibold flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  <span>{isConnected ? 'LIVE' : 'SYNC'}</span>
-                </span>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 sm:pb-3 border-b border-white/[0.08]">
-                <div>
-                  <h2 className="text-sm sm:text-base font-bold text-white font-display flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-slate-300" />
-                    <span>{tuitionVaultCategory === 'signup' ? 'Scholar Registration' : 'Authentication'}</span>
-                  </h2>
-                  <p className="text-[11px] text-slate-400">
-                    {tuitionVaultCategory === 'signup'
-                      ? 'Create a new account to join the live leaderboard'
-                      : 'Enter your 4-digit PIN code to unlock your terminal'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-3 sm:flex p-1 bg-black/50 rounded-xl border border-white/10 shrink-0 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTuitionVaultCategory('students');
-                      setLoginTarget('');
-                      setPinInput('');
-                      setLoginError('');
-                    }}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      tuitionVaultCategory === 'students'
-                        ? 'bg-white text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <UserIcon className="w-3.5 h-3.5 shrink-0" />
-                    <span>Sign In</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTuitionVaultCategory('signup');
-                      setPinInput('');
-                      setLoginError('');
-                      setSignUpError('');
-                    }}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      tuitionVaultCategory === 'signup'
-                        ? 'bg-emerald-400 text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Plus className="w-3.5 h-3.5 shrink-0" />
-                    <span>Sign Up</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTuitionVaultCategory('admin');
-                      setLoginTarget('admin');
-                      setPinInput('');
-                      setLoginError('');
-                    }}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      tuitionVaultCategory === 'admin'
-                        ? 'bg-white text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Shield className="w-3.5 h-3.5 shrink-0" />
-                    <span>Admin</span>
-                  </button>
-                </div>
-              </div>
-
-              {tuitionVaultCategory === 'signup' ? (
-                signUpPendingApprovalName ? (
-                  <div className="p-5 rounded-2xl bg-sky-500/10 border border-sky-400/30 space-y-3.5 text-center animate-view">
-                    <div className="w-11 h-11 rounded-2xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center mx-auto text-sky-300">
-                      <Shield className="w-5 h-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-sm sm:text-base font-extrabold text-white font-display">
-                        Request Sent for Admin Approval
-                      </h3>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        Your scholar profile for <strong className="text-sky-300">{signUpPendingApprovalName}</strong> has been transmitted to the Administrator. You will be able to sign in with your 4-digit PIN as soon as the Admin approves your request and calibrates your starting XP.
-                      </p>
-                    </div>
-                    <div className="pt-1 flex flex-col sm:flex-row items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSignUpPendingApprovalName(null);
-                          setTuitionVaultCategory('students');
-                        }}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white text-slate-950 font-bold text-xs cursor-pointer hover:bg-slate-100 transition-all"
-                      >
-                        Back to Sign In
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSignUpPendingApprovalName(null)}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-slate-300 font-semibold text-xs cursor-pointer transition-all"
-                      >
-                        Submit Another Request
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handlePublicSignUp} className="space-y-3.5 pt-1">
-                    <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/25 text-[11px] text-sky-200 flex items-center gap-2">
-                      <Shield className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                      <span>New sign-ups require Admin approval & starting XP calibration before first login.</span>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                        Scholar Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={signUpName}
-                        onChange={(e) => {
-                          setSignUpName(e.target.value);
-                          setSignUpError('');
-                        }}
-                        placeholder="e.g. Aryan"
-                        maxLength={28}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 focus:border-white/40 text-sm text-white placeholder:text-slate-500 outline-none transition-all"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                          Institute / Batch
-                        </label>
-                        <input
-                          type="text"
-                          value={signUpInstitute}
-                          onChange={(e) => setSignUpInstitute(e.target.value)}
-                          placeholder="e.g. Allen / Self-Study"
-                          maxLength={24}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 focus:border-white/40 text-sm text-white placeholder:text-slate-500 outline-none transition-all"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                          4-Digit Access PIN *
-                        </label>
-                        <input
-                          type="password"
-                          inputMode="numeric"
-                          maxLength={4}
-                          value={signUpPin}
-                          onChange={(e) => {
-                            setSignUpPin(e.target.value.replace(/\D/g, '').slice(0, 4));
-                            setSignUpError('');
-                          }}
-                          placeholder="4 digits (e.g. 4829)"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 focus:border-white/40 text-sm text-white font-mono-num tracking-widest placeholder:tracking-normal placeholder:text-slate-500 outline-none transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {signUpError && (
-                      <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 font-medium">
-                        {signUpError}
-                      </div>
-                    )}
-
-                    <div className="pt-1 flex flex-col sm:flex-row items-center gap-2.5">
-                      <button
-                        type="submit"
-                        disabled={isSigningUp}
-                        className="w-full py-3 px-4 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-50 text-slate-950 font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>{isSigningUp ? 'Submitting Request...' : 'Request Account & Send for Admin Approval'}</span>
-                      </button>
-                    </div>
-                  </form>
-                )
-              ) : (
-                <>
-                  {tuitionVaultCategory === 'students' && (
-                    <div>
-                      <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Scholar Name (Optional - or enter your 4-digit PIN directly)
-                      </label>
-                      <input
-                        type="text"
-                        value={signInNameInput}
-                        onChange={(e) => {
-                          setSignInNameInput(e.target.value);
-                          setLoginError('');
-                        }}
-                        placeholder="Enter your name or simply dial your 4-digit PIN below..."
-                        className="w-full px-3.5 py-2 rounded-xl bg-black/40 border border-white/10 focus:border-white/30 text-xs text-white placeholder:text-slate-500 outline-none transition-all"
-                      />
-                    </div>
-                  )}
-
-                  {tuitionVaultCategory === 'admin' && (
-                    <div className="w-full p-3 rounded-2xl flex items-center justify-between border bg-white/[0.08] border-white/20 text-white">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-white text-slate-950 flex items-center justify-center font-bold">
-                          <Shield className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-xs text-white">System Administrator</div>
-                          <div className="text-[10px] text-slate-400">Roster management, index weights, and system configuration</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono-num text-slate-200 font-semibold px-2 py-0.5 rounded bg-white/10 border border-white/15">
-                        ADMIN
-                      </span>
-                    </div>
-                  )}
-
-                  {/* 4-Digit PIN Indicator */}
-                  <div className="py-2.5 px-4 rounded-2xl bg-black/50 border border-white/[0.08] flex flex-col items-center justify-center space-y-1.5">
-                    <div className="flex items-center justify-center gap-4 py-1">
-                      {[0, 1, 2, 3].map((idx) => {
-                        const filled = pinInput.length > idx;
-                        return (
-                          <div
-                            key={idx}
-                            className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                              filled
-                                ? 'bg-white scale-110 shadow-[0_0_12px_rgba(255,255,255,0.8)]'
-                                : 'bg-white/10 border border-white/20'
-                            }`}
-                          />
-                        );
-                      })}
-                    </div>
-                    {loginError ? (
-                      <div className="text-[11px] text-rose-400 font-semibold">{loginError}</div>
-                    ) : (
-                      <div className="text-[10px] text-slate-500 font-mono-num">
-                        {tuitionVaultCategory === 'admin'
-                          ? 'Mode: ADMIN CONSOLE'
-                          : signInNameInput.trim()
-                          ? `Scholar: ${signInNameInput.trim().toUpperCase()}`
-                          : 'Enter 4-Digit Member PIN'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Glossy Glass Keypad */}
-                  <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => handlePinInputChange(pinInput + String(num))}
-                        className="h-12 sm:h-11 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] active:scale-95 border border-white/[0.08] hover:border-white/20 text-base font-bold text-white transition-all font-mono-num shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] cursor-pointer"
-                      >
-                        {num}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPinInput('');
-                        setLoginError('');
-                      }}
-                      className="h-12 sm:h-11 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] text-xs font-semibold text-slate-400 hover:text-white transition-all cursor-pointer"
-                    >
-                      CLEAR
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePinInputChange(pinInput + '0')}
-                      className="h-12 sm:h-11 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] active:scale-95 border border-white/[0.08] hover:border-white/20 text-base font-bold text-white transition-all font-mono-num shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] cursor-pointer"
-                    >
-                      0
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPinInput(prev => prev.slice(0, -1))}
-                      className="h-12 sm:h-11 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer"
-                    >
-                      DEL
-                    </button>
-                  </div>
-
-                  {/* Mobile Quick Actions right under Keypad so no scrolling is needed */}
-                  <div className="lg:hidden pt-2 border-t border-white/[0.07] flex flex-col gap-2">
-                    <PWAInstallButton
-                      isInstallable={pwa.isInstallable}
-                      isInstalled={pwa.isInstalled}
-                      isMobileDevice={pwa.isMobileDevice}
-                      onInstallClick={() => pwa.triggerInstall()}
-                      variant="login"
-                    />
-                    <button
-                      type="button"
-                      onClick={enterGuestDemoMode}
-                      className="w-full py-2.5 px-3 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/35 text-sky-100 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
-                    >
-                      <Compass className="w-3.5 h-3.5 text-sky-300" />
-                      <span>Launch Interactive Demo &amp; Guide</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+        <ShowcaseLandingPage
+          tuitionVaultCategory={tuitionVaultCategory}
+          setTuitionVaultCategory={setTuitionVaultCategory}
+          setLoginTarget={setLoginTarget}
+          pinInput={pinInput}
+          setPinInput={setPinInput}
+          handlePinInputChange={handlePinInputChange}
+          signInNameInput={signInNameInput}
+          setSignInNameInput={setSignInNameInput}
+          loginError={loginError}
+          setLoginError={setLoginError}
+          signUpName={signUpName}
+          setSignUpName={setSignUpName}
+          signUpInstitute={signUpInstitute}
+          setSignUpInstitute={setSignUpInstitute}
+          signUpPin={signUpPin}
+          setSignUpPin={setSignUpPin}
+          signUpError={signUpError}
+          setSignUpError={setSignUpError}
+          isSigningUp={isSigningUp}
+          signUpPendingApprovalName={signUpPendingApprovalName}
+          setSignUpPendingApprovalName={setSignUpPendingApprovalName}
+          handlePublicSignUp={handlePublicSignUp}
+          enterGuestDemoMode={enterGuestDemoMode}
+          isConnected={isConnected}
+          scholarCount={displayMembers.length}
+          activeGrindersCount={activeGrindersCount}
+          isRaidBlackoutActive={isRaidBlackoutActive}
+          lockoutSecondsRemaining={lockoutSecondsRemaining}
+          isVerifyingPin={isVerifyingPin}
+          pinStrengthHint={pinStrengthHint}
+          failedAttemptsCount={failedPinAttempts}
+          rememberedScholar={rememberedScholarObj}
+          onInstantRememberedLogin={() => {
+            if (!rememberedScholarObj) return;
+            sessionStorage.removeItem('jee_arena_manual_switch');
+            if (rememberedScholarObj.id === 'admin') {
+              setIsAdminUnlocked(true);
+              localStorage.setItem('jee_arena_admin', 'true');
+              setActiveMemberId('admin');
+              localStorage.setItem('jee_arena_active_id', 'admin');
+              setActiveTab('admin');
+            } else {
+              setIsAdminUnlocked(false);
+              localStorage.removeItem('jee_arena_admin');
+              setActiveMemberId(rememberedScholarObj.id);
+              localStorage.setItem('jee_arena_active_id', rememberedScholarObj.id);
+              setLogTargetMember(rememberedScholarObj.id);
+              setExamMemberId(rememberedScholarObj.id);
+              setActiveTab('arena');
+            }
+            handlePostLoginMobileAndNotificationSetup();
+          }}
+          onClearRememberedScholar={() => {
+            setRememberedDeviceMemberId(null);
+            try {
+              localStorage.removeItem('jee_arena_trusted_device_member');
+              localStorage.removeItem('jee_arena_active_member_id');
+            } catch {}
+          }}
+          pwa={pwa}
+        />
 
         <PWAOfflineBanner isOnline={pwa.isOnline} />
         <MobilePWAInstallPopup
@@ -12523,7 +12357,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-[100dvh] bg-[#06070A] bg-scholar-grid text-slate-100 pb-28 lg:pb-12 relative overflow-x-hidden transition-all ${isUiCursed ? 'curse-mode-active' : ''} ${isPrankActiveForUser && effectivePrankConfig?.tiltedWorld ? 'prank-tilted-world' : ''} ${isPrankActiveForUser && effectivePrankConfig?.comicSansMode ? 'prank-clown-theme' : ''}`}
+      className={`min-h-[100dvh] bg-[#080C16] bg-scholar-grid text-slate-100 pb-28 lg:pb-12 relative overflow-x-hidden transition-all ${isUiCursed ? 'curse-mode-active' : ''} ${isPrankActiveForUser && effectivePrankConfig?.tiltedWorld ? 'prank-tilted-world' : ''} ${isPrankActiveForUser && effectivePrankConfig?.comicSansMode ? 'prank-clown-theme' : ''}`}
     >
       <style>{customStyles}</style>
       {isUiCursed && (
@@ -12579,10 +12413,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Subtle Ambient Specular Lighting */}
-      <div className="pointer-events-none fixed top-0 left-1/3 w-[640px] h-[240px] bg-white/[0.025] blur-[140px] rounded-full" />
-      <div className="pointer-events-none fixed bottom-0 right-1/4 w-[520px] h-[220px] bg-emerald-500/[0.02] blur-[140px] rounded-full" />
-
       {/* Toast Notification */}
       {toast && (
         <div
@@ -12592,15 +12422,15 @@ export default function App() {
             }
             setToast(null);
           }}
-          className="fixed top-[max(12px,env(safe-area-inset-top,12px))] left-1/2 -translate-x-1/2 z-[120] w-[92%] max-w-sm surface-card rounded-full py-2.5 px-4 flex items-center gap-3 border border-white/25 shadow-[0_20px_50px_rgba(0,0,0,0.92)] animate-modal cursor-pointer"
+          className="fixed top-[max(12px,env(safe-area-inset-top,12px))] left-1/2 -translate-x-1/2 z-[120] w-[92%] max-w-sm surface-card py-2.5 px-4 flex items-center gap-3 border-2 border-[#38BDF8] animate-modal cursor-pointer"
         >
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-            toast.type === 'error' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/35' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border-2 ${
+            toast.type === 'error' ? 'bg-[#F43F5E]/20 text-[#F43F5E] border-[#F43F5E]' : 'bg-[#22C55E]/20 text-[#4ADE80] border-[#22C55E]'
           }`}>
-            {toast.type === 'error' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+            {toast.type === 'error' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 text-[#4ADE80]" />}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-bold text-white truncate">{toast.title}</div>
+            <div className="text-xs font-display font-bold text-white truncate">{toast.title}</div>
             {toast.detail && <div className="text-[11px] text-slate-300 truncate">{toast.detail}</div>}
           </div>
           <button
@@ -12615,47 +12445,47 @@ export default function App() {
         </div>
       )}
 
-      {/* DESKTOP LEFT FLOATING SIDEBAR (lg and up) - Contracts to icons, expands on hover */}
-      <aside className="hidden lg:flex fixed top-3 bottom-3 left-3 w-[72px] hover:w-[268px] xl:hover:w-[276px] z-40 group/sidebar rounded-3xl bg-[#080A0F]/95 backdrop-blur-2xl border border-white/[0.1] shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex-col justify-between p-2.5 hover:p-4 select-none overflow-y-auto overflow-x-hidden transition-[width,padding,box-shadow] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+      {/* DESKTOP LEFT FLOATING SIDEBAR (lg and up) - Tactile Neo-Brutalist Arcade Dock */}
+      <aside className="hidden lg:flex fixed top-3 bottom-3 left-3 w-[74px] hover:w-[268px] xl:hover:w-[276px] z-40 group/sidebar rounded-[22px] bg-[#111827] border-2 border-[#334155] border-b-4 border-b-[#020617] shadow-[0_8px_0_#020617,0_20px_40px_rgba(2,6,23,0.9)] flex-col justify-between p-2.5 hover:p-4 select-none overflow-y-auto overflow-x-hidden transition-[width,padding,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
         <div className="space-y-4 group-hover/sidebar:space-y-5">
           {/* Brand Header */}
           <div className="flex items-center justify-center group-hover/sidebar:justify-between px-0.5 group-hover/sidebar:px-1.5 pt-1">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative w-10 h-10 group-hover/sidebar:w-9 group-hover/sidebar:h-9 rounded-xl bg-gradient-to-b from-white/20 to-white/5 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] transition-all">
-                <BarChart3 className="w-4 h-4" />
+              <div className="relative w-10 h-10 group-hover/sidebar:w-9 group-hover/sidebar:h-9 rounded-[14px] bg-[#2563EB] border-2 border-[#38BDF8] border-b-4 border-b-[#1E3A8A] flex items-center justify-center text-[#FACC15] shrink-0 transition-all">
+                <Trophy className="w-4 h-4" />
                 <span
-                  className={`group-hover/sidebar:hidden absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-[#080A0F] ${isConnected ? 'bg-emerald-400' : 'bg-rose-500'}`}
+                  className={`group-hover/sidebar:hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#111827] ${isConnected ? 'bg-[#22C55E]' : 'bg-[#F43F5E]'}`}
                 />
               </div>
               <div className="hidden group-hover/sidebar:block min-w-0 whitespace-nowrap overflow-hidden">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-sm tracking-tight text-white font-display">JEE Quant Index</span>
+                  <span className="font-bold text-sm tracking-tight text-white font-display">JEE Grind Arena</span>
                   <span
-                    className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-rose-500'}`}
+                    className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[#22C55E]' : 'bg-[#F43F5E]'}`}
                     title={isConnected ? 'Live Sync Active' : 'Connecting...'}
                   />
                 </div>
-                <span className="text-[10px] text-slate-400 font-medium block">Performance Terminal</span>
+                <span className="text-[10px] text-[#38BDF8] font-mono font-bold block">ARCADE COMMAND DECK</span>
               </div>
             </div>
           </div>
 
           {/* Account Portfolio Summary Card */}
-          <div className="p-1.5 group-hover/sidebar:p-3.5 rounded-2xl surface-card space-y-0 group-hover/sidebar:space-y-2.5 transition-all">
+          <div className="p-1.5 group-hover/sidebar:p-3.5 rounded-[18px] bg-[#0B1120] border-2 border-[#334155] border-b-4 border-b-[#020617] space-y-0 group-hover/sidebar:space-y-2.5 transition-all">
             <div className="flex items-center justify-center group-hover/sidebar:justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-white text-slate-950 font-bold text-sm font-display flex items-center justify-center shrink-0 shadow-sm">
+                <div className="w-9 h-9 rounded-[12px] bg-[#FACC15] text-[#020617] border-2 border-[#020617] border-b-4 border-b-[#A16207] font-bold text-sm font-display flex items-center justify-center shrink-0">
                   {activeMemberId === 'admin' ? 'A' : (currentMember?.name?.[0] || 'D')}
                 </div>
                 <div className="hidden group-hover/sidebar:block min-w-0 whitespace-nowrap">
-                  <div className="text-xs font-bold text-white truncate">
+                  <div className="text-xs font-display font-bold text-white truncate">
                     {activeMemberId === 'admin'
                       ? 'Administrator'
                       : currentTeacher
                       ? currentTeacher.name
                       : (currentMember?.name || 'Demo Scholar')}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium truncate">
+                  <div className="text-[10px] text-[#94A3B8] font-medium truncate">
                     {activeMemberId === 'admin'
                       ? 'System Control'
                       : isGuestMode
@@ -12666,7 +12496,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <span className="hidden group-hover/sidebar:inline-block px-2 py-0.5 rounded-md bg-white/[0.08] border border-white/15 text-slate-200 font-mono-num text-[10px] font-semibold shrink-0">
+              <span className="hidden group-hover/sidebar:inline-block px-2 py-0.5 rounded-lg bg-[#2563EB]/20 border border-[#38BDF8]/50 text-[#38BDF8] font-mono-num text-[10px] font-bold shrink-0">
                 L{currentScholarRpg.level}
               </span>
             </div>
@@ -12674,12 +12504,12 @@ export default function App() {
             {!currentTeacher && activeMemberId !== 'admin' && (
               <div className="hidden group-hover/sidebar:block space-y-1">
                 <div className="flex items-center justify-between text-[10px] font-mono-num">
-                  <span className="text-slate-400">Index Tier Progress</span>
-                  <span className="text-slate-200 font-semibold">{currentScholarRpg.xpIntoLevel} / 150 XP</span>
+                  <span className="text-[#94A3B8]">Tier Progress</span>
+                  <span className="text-[#FACC15] font-bold">{currentScholarRpg.xpIntoLevel} / 150 XP</span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="w-full h-2 rounded-full bg-[#1E293B] border border-[#020617] overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-white transition-all duration-500"
+                    className="h-full rounded-full bg-[#22C55E] transition-all duration-500"
                     style={{ width: `${currentScholarRpg.progressPct}%` }}
                   />
                 </div>
@@ -12689,12 +12519,12 @@ export default function App() {
             {currentMember && activeMemberId !== 'admin' && (() => {
               const displayStreak = currentScholarStats?.streakCount ?? computeMemberStreak(currentMember, sessions);
               return (
-                <div className="hidden group-hover/sidebar:flex pt-1.5 border-t border-white/[0.07] items-center justify-between text-[10px]">
-                  <span className="font-medium text-slate-300">
-                    {displayStreak}d Consistency
+                <div className="hidden group-hover/sidebar:flex pt-1.5 border-t border-[#1E293B] items-center justify-between text-[10px]">
+                  <span className="font-bold text-slate-200">
+                    {displayStreak}d Streak
                   </span>
-                  <span className="font-mono-num text-emerald-400 font-semibold">
-                    +{Math.round((getStreakMultiplier(displayStreak) - 1) * 100)}% Yield
+                  <span className="font-mono-num text-[#4ADE80] font-bold">
+                    +{Math.round((getStreakMultiplier(displayStreak) - 1) * 100)}% XP
                   </span>
                 </div>
               );
@@ -12702,9 +12532,9 @@ export default function App() {
           </div>
 
           {/* Primary Navigation */}
-          <nav className="space-y-1.5 group-hover/sidebar:space-y-1">
-            <div className="hidden group-hover/sidebar:block px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
-              Workspace
+          <nav className="space-y-1.5 group-hover/sidebar:space-y-1.5">
+            <div className="hidden group-hover/sidebar:block px-2 pb-1 text-[10px] font-mono font-bold uppercase tracking-wider text-[#94A3B8] whitespace-nowrap">
+              Arcade Deck
             </div>
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -12731,33 +12561,33 @@ export default function App() {
                     }
                     setActiveTab(item.id);
                   }}
-                  className={`relative w-full p-1.5 group-hover/sidebar:px-3 group-hover/sidebar:py-2.5 rounded-xl text-left flex items-center justify-center group-hover/sidebar:justify-between transition-all cursor-pointer group ${
+                  className={`relative w-full p-1.5 group-hover/sidebar:px-3 group-hover/sidebar:py-2 rounded-[14px] text-left flex items-center justify-center group-hover/sidebar:justify-between transition-all cursor-pointer group ${
                     active
-                      ? 'bg-white/[0.1] border border-white/20 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04] border border-transparent'
+                      ? 'bg-[#2563EB] border-2 border-[#38BDF8] border-b-4 border-b-[#1E3A8A] text-white'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1E293B] border-2 border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-9 h-9 group-hover/sidebar:w-8 group-hover/sidebar:h-8 rounded-xl group-hover/sidebar:rounded-lg flex items-center justify-center transition-all shrink-0 ${
+                    <div className={`w-9 h-9 group-hover/sidebar:w-8 group-hover/sidebar:h-8 rounded-[10px] flex items-center justify-center transition-all shrink-0 ${
                       active
-                        ? 'bg-white text-slate-950 shadow-sm'
-                        : 'bg-white/[0.05] border border-white/[0.08] text-slate-400 group-hover:text-white'
+                        ? 'bg-[#FACC15] text-[#020617] border-2 border-[#020617]'
+                        : 'bg-[#0B1120] border border-[#334155] text-[#94A3B8] group-hover:text-white'
                     }`}>
-                      <Icon className="w-4 h-4 stroke-[2]" />
+                      <Icon className="w-4 h-4 stroke-[2.2]" />
                     </div>
                     <div className="hidden group-hover/sidebar:block min-w-0 whitespace-nowrap">
-                      <div className={`text-xs truncate ${active ? 'font-bold text-white' : 'font-medium'}`}>
+                      <div className={`text-xs font-display truncate ${active ? 'font-bold text-white' : 'font-semibold'}`}>
                         {item.label}
                       </div>
-                      <div className="text-[10px] text-slate-500 truncate">{item.desc}</div>
+                      <div className={`text-[10px] truncate ${active ? 'text-[#E0F2FE]' : 'text-[#94A3B8]'}`}>{item.desc}</div>
                     </div>
                   </div>
                   {item.badge > 0 && (
                     <>
-                      <span className="hidden group-hover/sidebar:inline-block px-2 py-0.5 rounded-full bg-white text-slate-950 text-[10px] font-bold font-mono-num shrink-0">
+                      <span className="hidden group-hover/sidebar:inline-block px-2 py-0.5 rounded-lg bg-[#FACC15] text-[#020617] border border-[#020617] text-[10px] font-extrabold font-mono-num shrink-0">
                         {item.badge}
                       </span>
-                      <span className="group-hover/sidebar:hidden absolute top-1 right-1 min-w-[14px] h-3.5 px-1 rounded-full bg-white text-slate-950 text-[8px] font-bold font-mono-num flex items-center justify-center">
+                      <span className="group-hover/sidebar:hidden absolute top-1 right-1 min-w-[14px] h-3.5 px-1 rounded-full bg-[#FACC15] text-[#020617] text-[8px] font-extrabold font-mono-num flex items-center justify-center">
                         {item.badge}
                       </span>
                     </>
@@ -12769,24 +12599,24 @@ export default function App() {
         </div>
 
         {/* Bottom Sidebar Controls */}
-        <div className="space-y-2 pt-3 border-t border-white/[0.08]">
+        <div className="space-y-2 pt-3 border-t-2 border-[#1E293B]">
           {(timerRunning || timerSeconds > 0) && (
             <button
               type="button"
               title={`Active Timer: ${hrsStr}:${minsStr}:${secsStr}`}
               onClick={() => setActiveTab('timer')}
-              className="w-full p-2 group-hover/sidebar:p-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/15 flex items-center justify-center group-hover/sidebar:justify-between text-left transition-all cursor-pointer"
+              className="w-full p-2 group-hover/sidebar:p-2.5 rounded-[14px] bg-[#0B1120] hover:bg-[#1E293B] border-2 border-[#22C55E] flex items-center justify-center group-hover/sidebar:justify-between text-left transition-all cursor-pointer"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#22C55E] animate-ping shrink-0" />
                 <div className="hidden group-hover/sidebar:block min-w-0 whitespace-nowrap">
-                  <div className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider truncate">
+                  <div className="text-[10px] font-semibold text-[#4ADE80] uppercase tracking-wider truncate">
                     Active · {timerSubject}
                   </div>
                   <div className="text-sm font-bold font-mono-num text-white">{hrsStr}:{minsStr}:{secsStr}</div>
                 </div>
               </div>
-              <span className="hidden group-hover/sidebar:inline-block text-[10px] px-2 py-0.5 rounded-md bg-white/10 text-white font-semibold">
+              <span className="hidden group-hover/sidebar:inline-block text-[10px] px-2 py-0.5 rounded-md bg-[#22C55E] text-[#020617] font-bold">
                 View
               </span>
             </button>
@@ -12796,7 +12626,7 @@ export default function App() {
             type="button"
             title="Log Session"
             onClick={() => openLogSessionModal()}
-            className="btn-primary w-full h-10 group-hover/sidebar:h-auto group-hover/sidebar:py-2.5 group-hover/sidebar:px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+            className="btn-primary w-full h-10 group-hover/sidebar:h-auto group-hover/sidebar:py-2.5 group-hover/sidebar:px-4 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5] shrink-0" />
             <span className="hidden group-hover/sidebar:inline whitespace-nowrap">Log Session</span>
@@ -12809,9 +12639,9 @@ export default function App() {
               setShowCombinedStudyModal(true);
               setIsCombinedStudyMinimized(false);
             }}
-            className="w-full h-9 group-hover/sidebar:h-auto group-hover/sidebar:py-2 group-hover/sidebar:px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 text-xs font-bold text-emerald-300 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="arcade-btn-cobalt w-full h-9 group-hover/sidebar:h-auto group-hover/sidebar:py-2 group-hover/sidebar:px-3 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Users className="w-4 h-4 text-[#FACC15] shrink-0" />
             <span className="hidden group-hover/sidebar:inline whitespace-nowrap">Study Together</span>
           </button>
 
@@ -12823,30 +12653,30 @@ export default function App() {
                 setGuideInitialSection('xp');
                 setShowGuideModal(true);
               }}
-              className="py-2 px-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11px] font-medium text-slate-300 hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              className="arcade-key py-2 px-2.5 text-[11px] font-bold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span className="hidden group-hover/sidebar:inline whitespace-nowrap">Methodology</span>
+              <BookOpen className="w-3.5 h-3.5 text-[#38BDF8] shrink-0" />
+              <span className="hidden group-hover/sidebar:inline whitespace-nowrap">Guide</span>
             </button>
             <button
               type="button"
               title="Switch Account"
               onClick={handleLogout}
-              className="py-2 px-2.5 rounded-xl bg-white/[0.04] hover:bg-rose-500/15 border border-white/[0.08] hover:border-rose-500/30 text-[11px] font-medium text-slate-300 hover:text-rose-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              className="arcade-key py-2 px-2.5 text-[11px] font-bold text-[#FDA4AF] hover:bg-[#F43F5E] hover:text-white flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <LogOut className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden group-hover/sidebar:inline whitespace-nowrap">Switch</span>
             </button>
           </div>
         </div>
       </aside>
 
-      {/* TOP NATIVE APP HEADER BAR - Calm, High-Craft Mobile & Desktop Header */}
-      <header className="sticky top-0 z-30 lg:ml-[92px] pt-[env(safe-area-inset-top,0px)] bg-[#06070A]/92 backdrop-blur-2xl border-b border-white/[0.07]">
+      {/* TOP NATIVE APP HEADER BAR - Tactile Neo-Brutalist Arcade Header */}
+      <header className="sticky top-0 z-30 lg:ml-[92px] pt-[env(safe-area-inset-top,0px)] bg-[#080C16]/95 backdrop-blur-md border-b-2 border-[#1E293B]">
         {isQuotaExceeded && showQuotaNotice && (
-          <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 sm:px-6 py-1.5 text-xs text-amber-200 flex items-center justify-between gap-3">
+          <div className="bg-[#111827] border-b-2 border-[#FACC15] px-3 sm:px-6 py-1.5 text-xs text-[#FEF08A] flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-[#FACC15] shrink-0" />
               <span className="truncate">
                 Firebase daily write quota reached. Running in local offline sync mode.
               </span>
@@ -12854,36 +12684,36 @@ export default function App() {
             <button
               type="button"
               onClick={() => setShowQuotaNotice(false)}
-              className="text-amber-400 hover:text-white p-1 rounded cursor-pointer shrink-0"
+              className="text-[#FACC15] hover:text-white p-1 rounded cursor-pointer shrink-0"
               title="Dismiss notice"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
-        <div className="max-w-[1540px] mx-auto px-3 sm:px-6 py-1.5 sm:py-2">
-          <div className="flex items-center justify-between gap-2 min-h-[2.6rem]">
+        <div className="max-w-[1540px] mx-auto px-3 sm:px-6 py-2">
+          <div className="flex items-center justify-between gap-2 min-h-[2.75rem]">
             {/* Left Brand + Active Screen Title */}
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <div className="lg:hidden w-9 h-9 rounded-xl bg-gradient-to-b from-sky-400/20 to-white/5 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0">
-                <BarChart3 className="w-4 h-4" />
+              <div className="lg:hidden w-9 h-9 rounded-[12px] bg-[#2563EB] border-2 border-[#38BDF8] border-b-4 border-b-[#1E3A8A] flex items-center justify-center text-[#FACC15] shrink-0">
+                <Trophy className="w-4 h-4" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="font-extrabold text-sm sm:text-base tracking-tight text-white font-display truncate">
+                  <span className="font-bold text-sm sm:text-lg tracking-tight text-white font-display truncate">
                     {navItems.find(n => n.id === activeTab)?.label || 'Grind Arena'}
                   </span>
                   <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-emerald-400' : 'bg-rose-500'}`}
+                    className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-[#22C55E]' : 'bg-[#F43F5E]'}`}
                   />
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 truncate">
+                <div className="flex items-center gap-1.5 text-[11px] text-[#94A3B8] truncate">
                   {currentMember && activeMemberId !== 'admin' ? (
-                    <span className="text-slate-300 font-mono-num font-semibold truncate">
-                      {currentMember.name} · {(currentScholarStats?.totalXp || 0).toLocaleString()} XP · L{currentScholarRpg.level}{isGuestMode ? ' · Demo' : ''}
+                    <span className="text-slate-200 font-mono-num font-bold truncate">
+                      {currentMember.name} · <span className="text-[#FACC15]">{(currentScholarStats?.totalXp || 0).toLocaleString()} XP</span> · L{currentScholarRpg.level}{isGuestMode ? ' · Demo' : ''}
                     </span>
                   ) : (
-                    <span className="text-slate-400 truncate">
+                    <span className="text-[#94A3B8] truncate">
                       {activeMemberId === 'admin' ? 'Administrator Mode' : 'Interactive Demo'}
                     </span>
                   )}
@@ -12896,10 +12726,10 @@ export default function App() {
               {(timerRunning || timerSeconds > 0) && (
                 <button
                   onClick={() => setActiveTab('timer')}
-                  className="flex items-center gap-1.5 h-10 sm:h-9 px-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/35 text-emerald-200 text-xs font-mono-num font-bold hover:bg-emerald-500/25 transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 h-10 sm:h-9 px-3 rounded-[12px] bg-[#0B1120] border-2 border-[#22C55E] text-[#4ADE80] text-xs font-mono-num font-bold hover:bg-[#22C55E]/15 transition-all cursor-pointer"
                   title="Active Session Timer"
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-[#22C55E] animate-ping shrink-0" />
                   <span>{Number(hrsStr) > 0 ? `${hrsStr}:${minsStr}:${secsStr}` : `${minsStr}:${secsStr}`}</span>
                 </button>
               )}
@@ -13193,8 +13023,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* NATIVE MOBILE & TABLET BOTTOM NAVIGATION BAR (< lg) - Ergonomic 48px Touch Targets */}
-      <nav aria-label="Primary Mobile Navigation" className="lg:hidden glass-mobile-dock grid grid-cols-5 gap-1 items-center">
+      {/* NATIVE MOBILE & TABLET BOTTOM NAVIGATION BAR (< lg) - Tactile Neo-Brutalist Arcade Dock */}
+      <nav aria-label="Primary Mobile Navigation" className="lg:hidden glass-mobile-dock grid grid-cols-5 gap-1.5 items-center">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
@@ -13220,19 +13050,19 @@ export default function App() {
                 }
                 setActiveTab(item.id);
               }}
-              className={`relative flex flex-col items-center justify-center gap-1 min-h-[48px] py-1.5 px-1 rounded-2xl text-[10px] font-semibold transition-all duration-150 cursor-pointer min-w-0 active:scale-95 ${
+              className={`relative flex flex-col items-center justify-center gap-1 min-h-[48px] py-1.5 px-1 rounded-[14px] text-[10px] font-display font-bold transition-all duration-150 cursor-pointer min-w-0 ${
                 active
-                  ? 'bg-white text-slate-950 shadow-[0_4px_16px_rgba(255,255,255,0.22)] font-extrabold'
+                  ? 'bg-[#2563EB] text-white border-2 border-[#38BDF8] border-b-4 border-b-[#1E3A8A]'
                   : isTimerTabActive
-                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-[#22C55E]/20 text-[#4ADE80] border-2 border-[#22C55E]'
+                  : 'text-[#94A3B8] hover:text-white'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-slate-950 stroke-[2.5]' : isTimerTabActive ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+              <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-[#FACC15] stroke-[2.5]' : isTimerTabActive ? 'text-[#4ADE80] animate-pulse' : 'text-[#94A3B8]'}`} />
               <span className="truncate w-full text-center text-[10px] leading-none">{item.shortLabel || item.label}</span>
               {item.badge > 0 && (
-                <span className={`absolute top-1 right-2 min-w-[15px] h-3.5 px-1 rounded-full text-[8.5px] font-bold flex items-center justify-center ${
-                  active ? 'bg-slate-950 text-white' : 'bg-sky-400 text-slate-950'
+                <span className={`absolute top-0.5 right-1.5 min-w-[15px] h-3.5 px-1 rounded-full text-[8.5px] font-extrabold font-mono-num flex items-center justify-center ${
+                  active ? 'bg-[#FACC15] text-[#020617]' : 'bg-[#38BDF8] text-[#020617]'
                 }`}>
                   {item.badge}
                 </span>
@@ -15668,7 +15498,7 @@ export default function App() {
                         : `Student: ${currentMember?.name || 'Sai'}`}
                     </span>
                     {pendingTuitionCount > 0 && (
-                      <span className="text-[10px] font-extrabold text-zinc-950 bg-orange-400 px-2.5 py-0.5 rounded-full">
+                      <span className="text-[10px] font-extrabold text-zinc-950 bg-yellow-400 px-2.5 py-0.5 rounded-full">
                         {pendingTuitionCount} {currentTeacher || activeMemberId === 'admin' ? 'Pending Review' : 'Pending HW'}
                       </span>
                     )}
@@ -15788,7 +15618,7 @@ export default function App() {
                         onClick={() => setTuitionSubTab(sub.id)}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
                           isActive
-                            ? 'bg-orange-500 text-zinc-950 font-bold shadow-sm'
+                            ? 'bg-yellow-500 text-zinc-950 font-bold shadow-sm'
                             : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
@@ -15835,7 +15665,7 @@ export default function App() {
 
                       <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800">
                         <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Active Assignments</span>
-                        <div className="text-lg sm:text-xl font-bold text-orange-400 font-mono-num mt-1">
+                        <div className="text-lg sm:text-xl font-bold text-yellow-400 font-mono-num mt-1">
                           {teacherAssignments.filter(a => !a.archived && (selectedTuitionSubject === 'ALL' || a.subject === selectedTuitionSubject)).length} tasks
                         </div>
                         <span className="text-[10px] text-zinc-500">{selectedTuitionSubject} homework sets</span>
@@ -16042,7 +15872,7 @@ export default function App() {
                                   <div className="space-y-1">
                                     <div className="w-full h-2 rounded-full bg-zinc-900 overflow-hidden flex">
                                       <div
-                                        className="h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full transition-all duration-500"
+                                        className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full transition-all duration-500"
                                         style={{ width: `${Math.max(5, durPct)}%` }}
                                       />
                                     </div>
@@ -16119,7 +15949,7 @@ export default function App() {
 
                                   <div className="w-full h-2.5 rounded-full bg-zinc-900 overflow-hidden flex p-0.5 border border-zinc-800">
                                     <div
-                                      className="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-500 rounded-full transition-all duration-500"
+                                      className="h-full bg-gradient-to-r from-amber-400 via-yellow-400 to-rose-500 rounded-full transition-all duration-500"
                                       style={{ width: `${Math.max(5, markPct)}%` }}
                                     />
                                   </div>
@@ -16187,7 +16017,7 @@ export default function App() {
 
                     {teacherAiReport.recommendedTuitionLesson && (
                       <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 space-y-1">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-orange-400 block">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-yellow-400 block">
                           Suggested Lesson Focus for Tuition Class
                         </span>
                         <p className="text-xs leading-relaxed text-zinc-300">
@@ -16279,7 +16109,7 @@ export default function App() {
                                     }}
                                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                                       isCurrent
-                                        ? 'bg-orange-500 text-zinc-950 shadow-sm'
+                                        ? 'bg-yellow-500 text-zinc-950 shadow-sm'
                                         : 'text-zinc-400 hover:text-white'
                                     }`}
                                   >
@@ -16325,7 +16155,7 @@ export default function App() {
 
                       {/* TEACHER / FACULTY PENDING SUBMISSION REVIEW QUEUE */}
                       {pendingQueue.length > 0 && (
-                        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-zinc-950 border border-amber-500/40 space-y-3">
+                        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-zinc-950 border border-amber-500/40 space-y-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
@@ -16415,7 +16245,7 @@ export default function App() {
                                 }
                               : {
                                   label: '🎯 Active',
-                                  cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+                                  cls: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
                                 };
 
                           const studentFilesCount =
@@ -16438,7 +16268,7 @@ export default function App() {
                                       {asg.subject}
                                     </span>
                                     {asg.xpReward > 0 ? (
-                                      <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/15 text-orange-400 text-[11px] font-bold font-mono-num border border-orange-500/30">
+                                      <span className="px-2.5 py-0.5 rounded-lg bg-yellow-500/15 text-yellow-400 text-[11px] font-bold font-mono-num border border-yellow-500/30">
                                         +{asg.xpReward} XP
                                       </span>
                                     ) : (
@@ -16558,7 +16388,7 @@ export default function App() {
                               )}
 
                               {/* STUDENT ACTION CARD & MULTI-FORMAT SUBMISSION SUMMARY */}
-                              <div className="p-4 rounded-2xl bg-zinc-950 border border-orange-500/30 space-y-3">
+                              <div className="p-4 rounded-2xl bg-zinc-950 border border-yellow-500/30 space-y-3">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                   <div className="space-y-1 min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -16676,7 +16506,7 @@ export default function App() {
                                             <span className="font-bold text-white flex items-center gap-1.5">
                                               <span>{mem.name}</span>
                                               {isSelf && (
-                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-400 font-bold">
+                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-yellow-500/20 text-yellow-400 font-bold">
                                                   Active
                                                 </span>
                                               )}
@@ -16744,7 +16574,7 @@ export default function App() {
                                               }}
                                               className="w-full py-1.5 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-semibold text-[11px] flex items-center justify-center gap-1 transition-all whitespace-nowrap"
                                             >
-                                              <Upload className="w-3 h-3 text-orange-400" />
+                                              <Upload className="w-3 h-3 text-yellow-400" />
                                               <span>{sub ? `Update ${mem.name}'s Work` : `Submit as ${mem.name}`}</span>
                                             </button>
                                           )}
@@ -16836,7 +16666,7 @@ export default function App() {
                     onClick={() => setAnalyticsTab(tab.id)}
                     className={`min-h-[40px] sm:min-h-[42px] px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                       isActive
-                        ? 'bg-orange-500 text-zinc-950 font-bold shadow-md'
+                        ? 'bg-yellow-500 text-zinc-950 font-bold shadow-md'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
                     }`}
                   >
@@ -16848,7 +16678,7 @@ export default function App() {
             </div>
 
             {/* Fair Comparison Rule Banner */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-zinc-900 border border-amber-500/25 text-xs text-zinc-300 space-y-1">
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-yellow-500/5 to-zinc-900 border border-amber-500/25 text-xs text-zinc-300 space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-amber-300">
                 <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Fair Comparison Protocol: Relative Percentile Normalization</span>
@@ -17021,7 +16851,7 @@ export default function App() {
                   return (
                     <div className="space-y-4">
                       {/* Interactive Improvement Trajectory Graph */}
-                      <div className="surface-card rounded-3xl p-4 sm:p-6 space-y-4 border-orange-500/20">
+                      <div className="surface-card rounded-3xl p-4 sm:p-6 space-y-4 border-yellow-500/20">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2">
@@ -17095,7 +16925,7 @@ export default function App() {
 
                           <div className="p-3 rounded-2xl bg-zinc-900/70 border border-zinc-800/80">
                             <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Exam XP Pool</span>
-                            <div className="text-lg font-bold text-orange-400 font-mono-num mt-0.5">
+                            <div className="text-lg font-bold text-yellow-400 font-mono-num mt-0.5">
                               {latestExam ? `${Math.round(currentPercentile * 3)} / 300 XP` : '0 / 300 XP'}
                             </div>
                           </div>
@@ -17235,7 +17065,7 @@ export default function App() {
                       <div className="surface-card rounded-3xl p-4 sm:p-6 space-y-4 border-amber-500/30">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-zinc-950 font-bold shadow-md">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center text-zinc-950 font-bold shadow-md">
                               <Brain className="w-4 h-4 stroke-[2.5]" />
                             </div>
                             <div>
@@ -17312,7 +17142,7 @@ export default function App() {
                                 <ul className="space-y-1.5 text-xs text-zinc-300">
                                   {aiAnalysis.recommendedAction.map((tip: string, i: number) => (
                                     <li key={i} className="flex items-start gap-2">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 shrink-0" />
+                                      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5 shrink-0" />
                                       <span>{tip}</span>
                                     </li>
                                   ))}
@@ -17779,7 +17609,7 @@ export default function App() {
 
                           <div className="w-full h-2 rounded-full bg-zinc-900 overflow-hidden">
                             <div
-                              className="h-full bg-gradient-to-r from-orange-500 to-amber-400"
+                              className="h-full bg-gradient-to-r from-yellow-500 to-amber-400"
                               style={{ width: `${Math.min(100, avgSubPct)}%` }}
                             />
                           </div>
@@ -18484,7 +18314,7 @@ export default function App() {
                           {quickXpDelta ? `${Number(quickXpDelta) > 0 ? '+' : ''}${quickXpDelta} XP` : '0 XP'}
                         </span>
                         {quickTimeDelta && (
-                          <span className="text-orange-400 font-mono-num ml-1">
+                          <span className="text-yellow-400 font-mono-num ml-1">
                             ({Number(quickTimeDelta) > 0 ? '+' : ''}{quickTimeDelta} mins)
                           </span>
                         )}
@@ -19469,11 +19299,11 @@ export default function App() {
                         onClick={() => setNewMemberInitialXpMode('squad_avg')}
                         className={`p-2 rounded-xl text-left border transition-all ${
                           newMemberInitialXpMode === 'squad_avg'
-                            ? 'bg-orange-500/20 border-orange-500/50 text-white shadow-sm'
+                            ? 'bg-yellow-500/20 border-yellow-500/50 text-white shadow-sm'
                             : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
                         }`}
                       >
-                        <div className="text-[10px] uppercase font-bold tracking-wider text-orange-400">
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-yellow-400">
                           Squad Average
                         </div>
                         <div className="text-sm font-bold font-mono-num text-white mt-0.5">
@@ -19545,7 +19375,7 @@ export default function App() {
                       <div className="space-y-0.5">
                         <span className="font-semibold text-zinc-300">Why starting at 0 XP can feel unfair:</span>
                         <p className="text-[10.5px] text-zinc-400 leading-relaxed">
-                          Starting at 0 XP mid-season leaves newcomers so far behind they lose motivation, while giving them top XP invalidates current grinders. Matching the lowest active member (<span className="text-amber-300 font-bold">{lowestSquadXp} XP</span>) gives them an achievable target. Furthermore, the arena's built-in <strong className="text-orange-300">Underdog Buff (1.25x XP)</strong> activates automatically whenever someone is &gt;150 XP behind the leader to accelerate catch-up!
+                          Starting at 0 XP mid-season leaves newcomers so far behind they lose motivation, while giving them top XP invalidates current grinders. Matching the lowest active member (<span className="text-amber-300 font-bold">{lowestSquadXp} XP</span>) gives them an achievable target. Furthermore, the arena's built-in <strong className="text-yellow-300">Underdog Buff (1.25x XP)</strong> activates automatically whenever someone is &gt;150 XP behind the leader to accelerate catch-up!
                         </p>
                       </div>
                     </div>
@@ -19717,10 +19547,10 @@ export default function App() {
             {adminSubTab === 'bounties' && (
               <div className="space-y-4">
                 {/* Bounty Creation Form */}
-                <form onSubmit={handleAdminCreateBounty} className="surface-card rounded-2xl p-4 sm:p-5 space-y-4 border-orange-500/20">
+                <form onSubmit={handleAdminCreateBounty} className="surface-card rounded-2xl p-4 sm:p-5 space-y-4 border-yellow-500/20">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <Award className="w-4 h-4 text-orange-400" />
+                      <Award className="w-4 h-4 text-yellow-400" />
                       <h3 className="text-sm sm:text-base font-bold text-white font-display">Dispatch Squad Bounty</h3>
                     </div>
                     <p className="text-xs text-zinc-400">
@@ -19790,12 +19620,12 @@ export default function App() {
                         />
                         <span className="font-semibold text-zinc-500 line-through">⚡ 2x First Blood Claim (No Task XP)</span>
                       </label>
-                      <label className="flex items-center gap-1.5 text-xs text-orange-400 cursor-pointer">
+                      <label className="flex items-center gap-1.5 text-xs text-yellow-400 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={bountyRequireProof}
                           onChange={(e) => setBountyRequireProof(e.target.checked)}
-                          className="rounded text-orange-500 focus:ring-orange-400"
+                          className="rounded text-yellow-500 focus:ring-yellow-400"
                         />
                         <span className="font-semibold">Require Student Photo Proof</span>
                       </label>
@@ -19809,7 +19639,7 @@ export default function App() {
                 </form>
 
                 {/* Active Bounties List (Mobile-Friendly Card Stack with Edit Functionality) */}
-                <div className="surface-card rounded-2xl p-4 sm:p-5 space-y-3.5 border-orange-500/20">
+                <div className="surface-card rounded-2xl p-4 sm:p-5 space-y-3.5 border-yellow-500/20">
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-white font-display">
@@ -19909,12 +19739,12 @@ export default function App() {
                                 <span>⚡ 2x First Blood Claim</span>
                               </label>
 
-                              <label className="flex items-center gap-1.5 text-orange-400 cursor-pointer">
+                              <label className="flex items-center gap-1.5 text-yellow-400 cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={editTaskForm.requireProof}
                                   onChange={(e) => setEditTaskForm({ ...editTaskForm, requireProof: e.target.checked })}
-                                  className="rounded text-orange-500"
+                                  className="rounded text-yellow-500"
                                 />
                                 <span>Require Student Photo Proof</span>
                               </label>
@@ -20176,7 +20006,7 @@ export default function App() {
                         {/* Card Header: Member, Time & Held Badge */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center font-bold text-xs text-orange-400">
+                            <div className="w-7 h-7 rounded-lg bg-yellow-500/15 border border-yellow-500/30 flex items-center justify-center font-bold text-xs text-yellow-400">
                               {s.memberName ? s.memberName[0] : 'S'}
                             </div>
                             <div>
@@ -20208,7 +20038,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          <span className="px-2.5 py-1 rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-400 font-mono-num font-bold text-xs">
+                          <span className="px-2.5 py-1 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 font-mono-num font-bold text-xs">
                             +{s.xpEarned} XP
                           </span>
                         </div>
@@ -20546,11 +20376,11 @@ export default function App() {
             {adminSubTab === 'arena' && (
               <div className="space-y-4">
                 {/* CO-OP RAID BOSS ADMIN COMMAND CENTER */}
-                <div className="surface-card rounded-2xl p-4 sm:p-5 space-y-4 border-orange-500/30">
+                <div className="surface-card rounded-2xl p-4 sm:p-5 space-y-4 border-yellow-500/30">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-zinc-800/80">
                     <div>
                       <div className="flex items-center gap-2">
-                        <Swords className="w-4 h-4 text-orange-400" />
+                        <Swords className="w-4 h-4 text-yellow-400" />
                         <h3 className="text-sm sm:text-base font-bold text-white font-display">
                           Syllabus-Agnostic Co-op Raid Boss Command Center
                         </h3>
@@ -20666,14 +20496,14 @@ export default function App() {
                               })}
                               className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
                                 selected
-                                  ? 'bg-orange-500/15 border-orange-500 text-white shadow-sm'
+                                  ? 'bg-yellow-500/15 border-yellow-500 text-white shadow-sm'
                                   : 'bg-zinc-900/70 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                               }`}
                             >
                               <div>
                                 <div className="text-xs font-bold text-white flex items-center justify-between">
                                   <span className="truncate">{boss.name}</span>
-                                  {selected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                                  {selected && <Check className="w-3.5 h-3.5 text-yellow-400 shrink-0" />}
                                 </div>
                                 <div className="text-[10px] text-zinc-500 truncate">{boss.title}</div>
                               </div>
@@ -20754,7 +20584,7 @@ export default function App() {
                             notify('Boss Arena Ready', 'Switched to Arena view.');
                             setActiveTab('arena');
                           }}
-                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-zinc-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md"
+                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-zinc-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
                           <span>View Boss Arena</span>
@@ -20815,7 +20645,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => archiveAndRevealWeeklyPodium()}
-                        className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-zinc-950 text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
+                        className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>Reveal &amp; Crown Weekly Podium</span>
@@ -20915,6 +20745,32 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* ARENA WORKSPACE FOOTER WITH CREATOR INSTAGRAM LINK */}
+        <footer className="surface-card p-4 sm:p-5 mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-center sm:text-left">
+            <div className="w-8 h-8 rounded-[10px] bg-[#2563EB] border-2 border-[#38BDF8] flex items-center justify-center text-[#FACC15] font-display font-bold text-xs shrink-0">
+              JA
+            </div>
+            <div>
+              <div className="text-xs sm:text-sm font-display font-bold text-white">
+                JEE Grind Arena · Tactile Competitive Study Sanctuary
+              </div>
+              <div className="text-[11px] text-[#94A3B8]">
+                Real-Time Standings · Zero-Drift Chronometer · Weekly Boss Raids
+              </div>
+            </div>
+          </div>
+          <a
+            href="https://www.instagram.com/s.ai.0717/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="arcade-btn-violet px-4 py-2 text-xs flex items-center gap-2 cursor-pointer no-underline"
+          >
+            <span>Instagram · @s.ai.0717</span>
+            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+          </a>
+        </footer>
       </main>
 
       {/* ADMIN UNLOCK MODAL */}
@@ -21095,7 +20951,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setLogSessionType('STUDY')}
-                    className={`py-1 rounded-lg text-xs font-semibold ${logSessionType === 'STUDY' ? 'bg-orange-500/20 text-orange-400 font-bold' : 'text-zinc-400'}`}
+                    className={`py-1 rounded-lg text-xs font-semibold ${logSessionType === 'STUDY' ? 'bg-yellow-500/20 text-yellow-400 font-bold' : 'text-zinc-400'}`}
                   >
                     Study
                   </button>
@@ -21134,7 +20990,7 @@ export default function App() {
                     type="button"
                     onClick={() => setLogSubject(sub.id)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                      logSubject === sub.id ? 'bg-orange-500 text-zinc-950 font-bold' : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+                      logSubject === sub.id ? 'bg-yellow-500 text-zinc-950 font-bold' : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
                     }`}
                   >
                     {sub.short}
@@ -22028,7 +21884,7 @@ export default function App() {
                       <div key={sub.name} className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-orange-400" />
+                            <span className="w-2 h-2 rounded-full bg-yellow-400" />
                             <span>{sub.name}</span>
                           </span>
                           {sPercentile !== null ? (
@@ -22234,7 +22090,7 @@ export default function App() {
           {/* Closed curtain intro */}
           {revealStep === 0 && (
             <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 text-center animate-modal">
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-zinc-950 shadow-xl mb-4 animate-bounce">
+              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center text-zinc-950 shadow-xl mb-4 animate-bounce">
                 <Trophy className="w-8 h-8 stroke-[2.5]" />
               </div>
               <h2 className="text-2xl sm:text-4xl font-extrabold text-white font-display">
@@ -22398,14 +22254,14 @@ export default function App() {
                         {formatDuration(revealStandings[2].studyMins || 0)} • {revealStandings[2].questions || 0} Qs
                       </div>
                       {revealStandings[2].weeklyMiniTitle && (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[9px] font-bold text-orange-300">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-yellow-500/15 border border-yellow-500/30 text-[9px] font-bold text-yellow-300">
                           {revealStandings[2].weeklyMiniTitle}
                         </span>
                       )}
                     </div>
-                    <div className="w-full h-24 sm:h-32 rounded-t-2xl bg-zinc-800/80 border-t-2 border-orange-400/60 p-2.5 flex flex-col items-center justify-between">
-                      <span className="text-[10px] font-bold text-orange-300 font-mono-num">🥉 #3 BRONZE</span>
-                      <div className="text-sm sm:text-lg font-black text-orange-300 font-mono-num">{revealStandings[2].weeklyXp} XP</div>
+                    <div className="w-full h-24 sm:h-32 rounded-t-2xl bg-zinc-800/80 border-t-2 border-yellow-400/60 p-2.5 flex flex-col items-center justify-between">
+                      <span className="text-[10px] font-bold text-yellow-300 font-mono-num">🥉 #3 BRONZE</span>
+                      <div className="text-sm sm:text-lg font-black text-yellow-300 font-mono-num">{revealStandings[2].weeklyXp} XP</div>
                     </div>
                   </div>
                 ) : (
@@ -22453,7 +22309,7 @@ export default function App() {
                             : rankNum === 2
                             ? 'bg-zinc-800/90 border-zinc-500/60 text-white font-semibold'
                             : rankNum === 3
-                            ? 'bg-orange-500/12 border-orange-400/40 text-orange-200 font-semibold'
+                            ? 'bg-yellow-500/12 border-yellow-400/40 text-yellow-200 font-semibold'
                             : 'bg-zinc-950/90 border-white/10 text-zinc-200'
                         }`}
                       >
@@ -22467,7 +22323,7 @@ export default function App() {
                                 : rankNum === 2
                                 ? 'bg-zinc-200 text-zinc-950'
                                 : rankNum === 3
-                                ? 'bg-orange-400 text-zinc-950'
+                                ? 'bg-yellow-400 text-zinc-950'
                                 : 'bg-zinc-800 text-zinc-300'
                             }`}
                           >
@@ -22502,7 +22358,7 @@ export default function App() {
                                   : rankNum === 2
                                   ? 'text-white'
                                   : rankNum === 3
-                                  ? 'text-orange-300'
+                                  ? 'text-yellow-300'
                                   : 'text-sky-300'
                               }
                             >
@@ -23154,12 +23010,12 @@ export default function App() {
       {/* HOMEWORK SUBMISSION & EXCUSE MODAL (STUDENTS) */}
       {activeAssignmentAction && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-xl surface-card rounded-3xl p-4 sm:p-6 space-y-4 my-auto max-h-[92vh] overflow-y-auto animate-modal border border-orange-500/30 shadow-2xl">
+          <div className="w-full max-w-xl surface-card rounded-3xl p-4 sm:p-6 space-y-4 my-auto max-h-[92vh] overflow-y-auto animate-modal border border-yellow-500/30 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2.5">
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
                   assignmentActionMode === 'submit_solution'
-                    ? 'bg-orange-500/15 border-orange-500/40 text-orange-400'
+                    ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400'
                     : 'bg-amber-500/15 border-amber-500/40 text-amber-400'
                 }`}>
                   {assignmentActionMode === 'submit_solution' ? (
@@ -23197,7 +23053,7 @@ export default function App() {
                 onClick={() => setAssignmentActionMode('submit_solution')}
                 className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                   assignmentActionMode === 'submit_solution'
-                    ? 'bg-orange-500 text-zinc-950 shadow-sm'
+                    ? 'bg-yellow-500 text-zinc-950 shadow-sm'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
@@ -23239,7 +23095,7 @@ export default function App() {
                 </p>
               )}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-orange-300 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-yellow-300 text-[10px] font-bold">
                   {activeAssignmentAction.subject}
                 </span>
                 <span className="text-[10px] text-zinc-400 font-mono-num">
@@ -23285,7 +23141,7 @@ export default function App() {
                       onClick={() => setSubmissionInputTab('notes')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
                         submissionInputTab === 'notes'
-                          ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
+                          ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40'
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
@@ -23327,7 +23183,7 @@ export default function App() {
                   <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/90 space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-orange-400" />
+                        <FileText className="w-3.5 h-3.5 text-yellow-400" />
                         <span>Typed Answer & Written Solution Notes</span>
                       </label>
                       <span className="text-[10px] text-zinc-500 font-mono-num">
@@ -23339,7 +23195,7 @@ export default function App() {
                       placeholder="Write your step-by-step derivations, final numerical answers, or explanations for your teacher..."
                       value={studentHomeworkNote}
                       onChange={(e) => setStudentHomeworkNote(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-white text-xs leading-relaxed focus:outline-none focus:border-orange-500"
+                      className="w-full px-3 py-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-white text-xs leading-relaxed focus:outline-none focus:border-yellow-500"
                     />
                   </div>
                 )}
@@ -23638,7 +23494,7 @@ export default function App() {
 
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-zinc-950 font-bold shadow-md">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center text-zinc-950 font-bold shadow-md">
                   <Bell className="w-5 h-5 stroke-[2.5]" />
                 </div>
                 <div>
@@ -24068,7 +23924,7 @@ export default function App() {
                           <span>🥈 {sp.runnerUpName} ({sp.runnerUpXp})</span>
                         )}
                         {sp.thirdPlaceName && (
-                          <span className="text-orange-300">🥉 {sp.thirdPlaceName} ({sp.thirdPlaceXp})</span>
+                          <span className="text-yellow-300">🥉 {sp.thirdPlaceName} ({sp.thirdPlaceXp})</span>
                         )}
                       </div>
                     )}
@@ -24122,7 +23978,7 @@ export default function App() {
                         <span className="font-bold text-white font-sans">{md.name}</span>
                         {md.gold > 0 && <span className="text-amber-300 font-bold">🥇{md.gold}</span>}
                         {md.silver > 0 && <span className="text-zinc-300 font-bold">🥈{md.silver}</span>}
-                        {md.bronze > 0 && <span className="text-orange-300 font-bold">🥉{md.bronze}</span>}
+                        {md.bronze > 0 && <span className="text-yellow-300 font-bold">🥉{md.bronze}</span>}
                       </div>
                     ))}
                   </div>
@@ -24229,12 +24085,12 @@ export default function App() {
                       </div>
 
                       {/* #3 Bronze Third Place */}
-                      <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-orange-500/35 flex sm:flex-col items-center sm:items-start justify-between gap-1.5">
+                      <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-yellow-500/35 flex sm:flex-col items-center sm:items-start justify-between gap-1.5">
                         <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-orange-400/25 border border-orange-400/40 text-orange-300 font-black font-mono-num text-[10px]">
+                          <span className="px-1.5 py-0.5 rounded bg-yellow-400/25 border border-yellow-400/40 text-yellow-300 font-black font-mono-num text-[10px]">
                             #3 BRONZE
                           </span>
-                          <span className="text-[10px] text-orange-300 font-semibold">3rd Place</span>
+                          <span className="text-[10px] text-yellow-300 font-semibold">3rd Place</span>
                         </div>
                         <div className="text-right sm:text-left">
                           <div className="text-xs sm:text-sm font-bold text-white flex items-center gap-1">
@@ -24245,7 +24101,7 @@ export default function App() {
                               </span>
                             )}
                           </div>
-                          <div className="text-sm font-extrabold text-orange-300 font-mono-num">
+                          <div className="text-sm font-extrabold text-yellow-300 font-mono-num">
                             {sprint.thirdPlaceXp} XP
                           </div>
                         </div>
@@ -24278,7 +24134,7 @@ export default function App() {
                                     : st.rank === 2
                                     ? 'bg-zinc-900 text-zinc-100 font-semibold border border-zinc-700/70'
                                     : st.rank === 3
-                                    ? 'bg-orange-500/10 text-orange-200 font-semibold border border-orange-500/25'
+                                    ? 'bg-yellow-500/10 text-yellow-200 font-semibold border border-yellow-500/25'
                                     : 'bg-zinc-900/60 text-zinc-300 border border-white/[0.05]'
                                 }`}
                               >
@@ -24291,7 +24147,7 @@ export default function App() {
                                           : st.rank === 2
                                           ? 'text-zinc-300'
                                           : st.rank === 3
-                                          ? 'text-orange-300'
+                                          ? 'text-yellow-300'
                                           : 'text-zinc-500'
                                       }`}
                                     >
@@ -24335,7 +24191,7 @@ export default function App() {
                                         : st.rank === 2
                                         ? 'text-white'
                                         : st.rank === 3
-                                        ? 'text-orange-300'
+                                        ? 'text-yellow-300'
                                         : 'text-sky-300'
                                     }`}
                                   >
