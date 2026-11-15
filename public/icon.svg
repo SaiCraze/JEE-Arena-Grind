@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#111C33" />
+      <stop offset="100%" stop-color="#06070A" />
+    </radialGradient>
+    <linearGradient id="hexStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="55%" stop-color="#22D3EE" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="boltFill" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGlow)" />
+  <polygon
+    points="256,68 418,162 418,350 256,444 94,350 94,162"
+    fill="#0B1324"
+    fill-opacity="0.75"
+    stroke="url(#hexStroke)"
+    stroke-width="20"
+    stroke-linejoin="round"
+  />
+  <circle cx="256" cy="256" r="118" stroke="#38BDF8" stroke-opacity="0.28" stroke-width="6" />
+  <polygon
+    points="272,146 184,268 246,268 228,366 328,242 264,242"
+    fill="url(#boltFill)"
+  />
+</svg>

@@ -1,0 +1,128 @@
+[
+  {
+    "memberName": "Sai",
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "subscription": {
+      "expirationTime": null,
+      "endpoint": "https://fcm.googleapis.com/fcm/send/f-zCcDvPFYY:APA91bGrVOmshGsptC6carID5szjWy10wBTq9kePAChNrOnyb6MZOt4yDAdzlEyID5-m8RooL-yWLmJD7Vf8YKZZqUBGKds_ETBaNY-FsWXTL8Jsk03Zfgm8N8rlF1e3rmCB-fqyj18X",
+      "keys": {
+        "auth": "czGs3RbfxbJFYrt4eeGIDA",
+        "p256dh": "BKkPxH4OQl721NK4lKrmyfDEDUXjpFR_YbO1SGp1FXb7bY9mDoV2TiXxTH3nyd3uYVv5c7a7l_JMNXH1XZYeBMs"
+      }
+    },
+    "endpoint": "https://fcm.googleapis.com/fcm/send/f-zCcDvPFYY:APA91bGrVOmshGsptC6carID5szjWy10wBTq9kePAChNrOnyb6MZOt4yDAdzlEyID5-m8RooL-yWLmJD7Vf8YKZZqUBGKds_ETBaNY-FsWXTL8Jsk03Zfgm8N8rlF1e3rmCB-fqyj18X",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "isStandalone": true,
+    "isMobile": false,
+    "updatedAt": 1794594199297,
+    "memberId": "sai"
+  },
+  {
+    "updatedAt": 1794593849939,
+    "subscription": {
+      "keys": {
+        "p256dh": "BNYilyCxY-DCNxy8iSSewtoS2wmsRQYgtg0N40Pv4_pvdbPvT_BSKK_ZL3Q5ocZwwi_FUoQoSQGp-nGuDHfENX8",
+        "auth": "sDDYM3Huj5s1f0-0uVj3LQ"
+      },
+      "expirationTime": null,
+      "endpoint": "https://fcm.googleapis.com/fcm/send/erPOueVJ6a0:APA91bExa1Pc9yC2qFeVz_-YhtOL3lIk2sgaz7LGuWXm8sYTgCulvN_ANVe5wIVYF5PYoBP6EHxL9vxOUx5nkqwdr7b73L7tG4W28-qII83hZJxqJshcdUKv_O4Q5ZhLzvl8MgJOSjCr"
+    },
+    "endpoint": "https://fcm.googleapis.com/fcm/send/erPOueVJ6a0:APA91bExa1Pc9yC2qFeVz_-YhtOL3lIk2sgaz7LGuWXm8sYTgCulvN_ANVe5wIVYF5PYoBP6EHxL9vxOUx5nkqwdr7b73L7tG4W28-qII83hZJxqJshcdUKv_O4Q5ZhLzvl8MgJOSjCr",
+    "userAgent": "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+    "isStandalone": true,
+    "memberName": "Ananya",
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "isMobile": false,
+    "memberId": "ananya_047"
+  },
+  {
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36",
+    "memberName": "Sai",
+    "isStandalone": true,
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/e0-haNBK08g:APA91bHbu-MadTMiSUyTBe78-VdE4Ba3Z4c2qg5Ih-hL2dUbl-yB0GWckJpbelHaMZqpCGU_9JaSdpTweS9F_gj_YyK5G3EnUsVrZ6Cv94SrTJBEyxyRJWzRsnep6IsCDZQK1YJmAcT1",
+    "updatedAt": 1794593301978,
+    "isMobile": true,
+    "memberId": "sai",
+    "subscription": {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/e0-haNBK08g:APA91bHbu-MadTMiSUyTBe78-VdE4Ba3Z4c2qg5Ih-hL2dUbl-yB0GWckJpbelHaMZqpCGU_9JaSdpTweS9F_gj_YyK5G3EnUsVrZ6Cv94SrTJBEyxyRJWzRsnep6IsCDZQK1YJmAcT1",
+      "keys": {
+        "p256dh": "BN27vgKmGEJcAFU-hQ1YchRKlOKMDAUJbA-saVS9tReHDS_9UJ0E87laGPwT1EGNK__08q7nXlngEO5orZiCu1E",
+        "auth": "MzN-ixhND1lRvPMl3Pax1w"
+      },
+      "expirationTime": null
+    }
+  },
+  {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "memberName": "Ujwal",
+    "subscription": {
+      "expirationTime": null,
+      "endpoint": "https://fcm.googleapis.com/fcm/send/cZbUwSgTbLQ:APA91bFFT70Keo_It0K271xwv9qFlrcUshmuCtYAcsAVgK4mej_XtXa_TDLZODnn9D-e1pIhU3HK5J9PuNsnZCx93UrKuurDc2Uy8IopqaAiT_w89pi91zPJUf9qaLm-b0U5_jtzxzc5",
+      "keys": {
+        "auth": "eQNu_L0qAAEq1kC0J7ltKQ",
+        "p256dh": "BMPhPOQvr5010CYB8eueRb8IeFSF3_PkmI6uonWL0pPh35nUeVKT5grw6dU_xakO08F_fsqWrsu-x9fIhueOefM"
+      }
+    },
+    "updatedAt": 1794589814071,
+    "endpoint": "https://fcm.googleapis.com/fcm/send/cZbUwSgTbLQ:APA91bFFT70Keo_It0K271xwv9qFlrcUshmuCtYAcsAVgK4mej_XtXa_TDLZODnn9D-e1pIhU3HK5J9PuNsnZCx93UrKuurDc2Uy8IopqaAiT_w89pi91zPJUf9qaLm-b0U5_jtzxzc5",
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "memberId": "ujwal_715",
+    "isMobile": false,
+    "isStandalone": true
+  },
+  {
+    "isStandalone": true,
+    "updatedAt": 1794589651756,
+    "memberName": "Utham",
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/fSToxL-sQbg:APA91bE3wKls-SBOUQS0fPs-eyZe87kQlizfdvfEStlXTUNpiaOsO5mvelTOE3cd6v8cyiA_TgbVPLyIoD_I-7_GrEX-rW1Van7GK4V3m9yw_cxAbmk3kLeBvLaKgH6WivffZr_-n94K",
+    "isMobile": true,
+    "memberId": "utham_940",
+    "subscription": {
+      "keys": {
+        "p256dh": "BEoiUT8X8qfJot95ahwBufjqa9GGLnWMDm0dVJ3TKfKe8oSvE-R683Z1szBJt5vVuhlGszFg2YEINQ6uY2Whi6I",
+        "auth": "Swa31W3WXVdlKyM93nfKPQ"
+      },
+      "endpoint": "https://fcm.googleapis.com/fcm/send/fSToxL-sQbg:APA91bE3wKls-SBOUQS0fPs-eyZe87kQlizfdvfEStlXTUNpiaOsO5mvelTOE3cd6v8cyiA_TgbVPLyIoD_I-7_GrEX-rW1Van7GK4V3m9yw_cxAbmk3kLeBvLaKgH6WivffZr_-n94K",
+      "expirationTime": null
+    }
+  },
+  {
+    "memberName": "Sanjana",
+    "subscription": {
+      "keys": {
+        "auth": "HQJsNetJmx9pfThJmPMs_g",
+        "p256dh": "BNtnTsTqH5RlKHTX90qU7Z2qS9KA72yMD3GPyVG9sMa8m8-KsEfQ8wZosVevOBU1gnvpcyIzpnk3UvrSBKD7Wis"
+      },
+      "expirationTime": null,
+      "endpoint": "https://fcm.googleapis.com/fcm/send/c-8I1gnoY_I:APA91bFF0GAk-hxuivHvETQz5XXe5fW5OJIHdlZgcGNnYUbNkUcgnfHBEOhCagBh6o-3sEjqvS66sL6Ui4k8KJBYnodDXBRywVFQ6SZlt1Rpdevca7boCotKBJZmCyeCfEc9z_m6mVBK"
+    },
+    "updatedAt": 1794587937147,
+    "isMobile": true,
+    "isStandalone": true,
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "memberId": "sanjana_253",
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/c-8I1gnoY_I:APA91bFF0GAk-hxuivHvETQz5XXe5fW5OJIHdlZgcGNnYUbNkUcgnfHBEOhCagBh6o-3sEjqvS66sL6Ui4k8KJBYnodDXBRywVFQ6SZlt1Rpdevca7boCotKBJZmCyeCfEc9z_m6mVBK"
+  },
+  {
+    "updatedAt": 1794495828648,
+    "isStandalone": true,
+    "memberName": "",
+    "vapidPublicKey": "BHNi6Bxq_L-ZPsiEjedgtK8ckhGrJqruCcH8Yo9DQxAaxGGwvp5le30MhrTwdImxBrNldFPTgrFrJYBHHIMNDRc",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/eefPtIJIJ0k:APA91bFgyuaMZXsKvGr-QznMG0dK5N-BwPY17aqpcrUeHTSAWeQD4waW8jRYrelHzsX_DPrpNSQuqdNx6YtvnCqB8fVbHm1Nco-ZbTDgIB0JuYA9-nXKnFRI3vAUxhBxDYTkcRuC3RKN",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "isMobile": false,
+    "subscription": {
+      "expirationTime": null,
+      "endpoint": "https://fcm.googleapis.com/fcm/send/eefPtIJIJ0k:APA91bFgyuaMZXsKvGr-QznMG0dK5N-BwPY17aqpcrUeHTSAWeQD4waW8jRYrelHzsX_DPrpNSQuqdNx6YtvnCqB8fVbHm1Nco-ZbTDgIB0JuYA9-nXKnFRI3vAUxhBxDYTkcRuC3RKN",
+      "keys": {
+        "auth": "-XSTaYQ-bFZe0-B9qhs20A",
+        "p256dh": "BLeGbwNGYhmbKrfCkktK4klR7A33ivhEd-TerT7z8bZrnTYtT9t15EugrU7dZ-2Wy4LkzmFJmML7OSQPRv_saQc"
+      }
+    },
+    "memberId": "scholar"
+  }
+]

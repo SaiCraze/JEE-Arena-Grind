@@ -13,7 +13,16 @@
         "manualMinutesOffset": { "type": "number" },
         "isGrinding": { "type": "boolean" },
         "grindingSubject": { "type": "string", "maxLength": 100 },
-        "grindingStartedAt": { "type": "number" }
+        "grindingStartedAt": { "type": "number" },
+        "grindingAccumulatedSeconds": { "type": "number" },
+        "grindingLinkedTaskId": { "type": "string", "maxLength": 128 },
+        "streakCount": { "type": "number" },
+        "lastLoginDate": { "type": "string", "maxLength": 30 },
+        "equippedTitle": { "type": "string", "maxLength": 100 },
+        "declaredRivalId": { "type": "string", "maxLength": 128 },
+        "declaredRivalName": { "type": "string", "maxLength": 100 },
+        "lastTacticalActionWeekKey": { "type": "string", "maxLength": 20 },
+        "lastTacticalActionType": { "type": "string", "maxLength": 50 }
       },
       "required": ["id", "name"]
     },
@@ -25,13 +34,16 @@
         "memberId": { "type": "string", "maxLength": 128 },
         "memberName": { "type": "string", "maxLength": 100 },
         "sessionType": { "type": "string", "enum": ["STUDY", "BREAK"] },
-        "inputMethod": { "type": "string" },
+        "inputMethod": { "type": "string", "maxLength": 50 },
         "subject": { "type": "string", "maxLength": 50 },
         "date": { "type": "string", "maxLength": 30 },
         "duration": { "type": "number" },
         "startTime": { "type": "string", "maxLength": 30 },
         "endTime": { "type": "string", "maxLength": 30 },
         "questions": { "type": "number" },
+        "solvedQuestions": { "type": "number" },
+        "attemptedQuestions": { "type": "number" },
+        "solveRate": { "type": "number" },
         "difficulty": { "type": "string", "maxLength": 50 },
         "notes": { "type": "string", "maxLength": 500 },
         "xpEarned": { "type": "number" },
@@ -78,6 +90,68 @@
       },
       "required": ["title", "xp", "createdAt"]
     },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Tuition faculty member profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "subject": { "type": "string", "maxLength": 50 },
+        "institute": { "type": "string", "maxLength": 100 },
+        "passcode": { "type": "string", "maxLength": 10 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "subject", "passcode"]
+    },
+    "TeacherAssignment": {
+      "title": "TeacherAssignment",
+      "description": "Tuition homework assignment and submissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "teacherId": { "type": "string", "maxLength": 128 },
+        "teacherName": { "type": "string", "maxLength": 100 },
+        "subject": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "xpReward": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "subject", "createdAt"]
+    },
+    "TeacherNote": {
+      "title": "TeacherNote",
+      "description": "Direct faculty feedback note",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "teacherId": { "type": "string", "maxLength": 128 },
+        "teacherName": { "type": "string", "maxLength": 100 },
+        "subject": { "type": "string", "maxLength": 50 },
+        "targetMemberId": { "type": "string", "maxLength": 128 },
+        "note": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["teacherId", "note", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Squad and direct chat message",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderType": { "type": "string", "enum": ["student", "teacher", "admin"] },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "recipientName": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "maxLength": 2000 },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["senderId", "text", "timestamp"]
+    },
     "Announcement": {
       "title": "Announcement",
       "description": "Admin broadcast notification",
@@ -110,7 +184,11 @@
       "properties": {
         "leaderboardHidden": { "type": "boolean" },
         "revealTimestamp": { "type": "number" },
-        "hiddenAt": { "type": "number" }
+        "hiddenAt": { "type": "number" },
+        "prankSettings": {
+          "type": "object",
+          "description": "Active administrator prank and UI chaos configuration"
+        }
       }
     }
   },
@@ -130,6 +208,22 @@
     "/artifacts/{appId}/public/data/tasks/{taskId}": {
       "schema": "#/entities/Task",
       "description": "Tasks & bounties"
+    },
+    "/artifacts/{appId}/public/data/teachers/{teacherId}": {
+      "schema": "#/entities/Teacher",
+      "description": "Tuition teachers"
+    },
+    "/artifacts/{appId}/public/data/teacher_assignments/{assignmentId}": {
+      "schema": "#/entities/TeacherAssignment",
+      "description": "Tuition homework assignments"
+    },
+    "/artifacts/{appId}/public/data/teacher_notes/{noteId}": {
+      "schema": "#/entities/TeacherNote",
+      "description": "Tuition teacher notes"
+    },
+    "/artifacts/{appId}/public/data/messages/{messageId}": {
+      "schema": "#/entities/ChatMessage",
+      "description": "Squad and direct chat messages"
     },
     "/artifacts/{appId}/public/data/announcements/{announcementId}": {
       "schema": "#/entities/Announcement",

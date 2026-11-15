@@ -134,3 +134,30 @@ export function playDuelClashSound() {
     console.debug('Audio error', e);
   }
 }
+
+export const playStudyLogSuccessChime = playCelebrationSound;
+export const playOvertakeVictorySound = playCelebrationSound;
+export const playOvertakeWarningSound = playDuelClashSound;
+export const playBossHitSound = playSlashSound;
+export const playVictoryFanfare = playCelebrationSound;
+
+export function playLootTick() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(920, now);
+    osc.frequency.exponentialRampToValueAtTime(1480, now + 0.045);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.05);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.055);
+  } catch (e) {
+    console.debug('Audio error', e);
+  }
+}

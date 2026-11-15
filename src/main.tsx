@@ -6,4 +6,3 @@ import { registerServiceWorker } from './utils/notifications';
 registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(<App />);
-

@@ -1,211 +1,273 @@
-// Procedural Web Audio API Sound Engine (Zero external assets required)
+// Web Audio API Procedural Sound FX Synthesizer (Zero External Dependencies)
 
-const MUTE_STORAGE_KEY = 'jee_arena_audio_muted';
+let audioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      audioCtx = new AudioContextClass();
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
 
 export function isAudioMuted(): boolean {
-  try {
-    return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  if (typeof localStorage === 'undefined') return false;
+  return localStorage.getItem('jee_arena_muted') === 'true';
 }
 
 export function setAudioMuted(muted: boolean): void {
-  try {
-    localStorage.setItem(MUTE_STORAGE_KEY, muted ? 'true' : 'false');
-  } catch {}
-}
-
-function getAudioContext(): AudioContext | null {
-  if (isAudioMuted()) return null;
-  if (typeof window === 'undefined') return null;
-  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  if (!AudioCtx) return null;
-  const ctx = new AudioCtx();
-  if (ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('jee_arena_muted', String(muted));
   }
-  return ctx;
 }
 
-// 1. Ascending Arpeggio Chime for Standard Study Session Log
+// 1. Cheerful ascending 3-note arpeggio (C5 -> E5 -> G5)
 export function playLogSuccess(): void {
+  if (isAudioMuted()) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
-  const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
   const now = ctx.currentTime;
+  const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
 
   notes.forEach((freq, idx) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(freq, now + idx * 0.075);
 
-    gain.gain.setValueAtTime(0.001, now + idx * 0.075);
-    gain.gain.exponentialRampToValueAtTime(0.18, now + idx * 0.075 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.075 + 0.35);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now + idx * 0.075);
-    osc.stop(now + idx * 0.075 + 0.36);
-  });
-}
-
-// 2. First Blood Fanfare
-export function playFirstBlood(): void {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
-  const now = ctx.currentTime;
-
-  notes.forEach((freq, idx) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
+    osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, now + idx * 0.08);
 
-    gain.gain.setValueAtTime(0.001, now + idx * 0.08);
-    gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.08 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.45);
+    gain.gain.setValueAtTime(0, now + idx * 0.08);
+    gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.08 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.25);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
 
     osc.start(now + idx * 0.08);
-    osc.stop(now + idx * 0.08 + 0.46);
+    osc.stop(now + idx * 0.08 + 0.3);
   });
 }
 
-// 3. Critical Hit Snap (Boss Damaged / Hard Questions Solved)
-export function playCritHit(): void {
+export const playArpeggioUp = playLogSuccess;
+
+// 2. High-voltage retro arcade siren sound
+export function playFirstBlood(): void {
+  if (isAudioMuted()) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
   const now = ctx.currentTime;
-
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(920, now);
-  osc.frequency.exponentialRampToValueAtTime(110, now + 0.22);
 
-  gain.gain.setValueAtTime(0.28, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(300, now);
+  osc.frequency.exponentialRampToValueAtTime(1200, now + 0.2);
+  osc.frequency.exponentialRampToValueAtTime(400, now + 0.4);
+  osc.frequency.exponentialRampToValueAtTime(1500, now + 0.6);
+
+  gain.gain.setValueAtTime(0.2, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
 
   osc.connect(gain);
   gain.connect(ctx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.7);
+}
+
+// 3. Bass-boosted snap / synth punch when logging JEE Advanced questions or attacking Boss
+export function playCritHit(): void {
+  if (isAudioMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+
+  // Sub-bass punch
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(180, now);
+  osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+
+  gain.gain.setValueAtTime(0.35, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.35);
+
+  // High sparkle
+  const oscHigh = ctx.createOscillator();
+  const gainHigh = ctx.createGain();
+
+  oscHigh.type = 'sine';
+  oscHigh.frequency.setValueAtTime(1200, now);
+  oscHigh.frequency.exponentialRampToValueAtTime(2400, now + 0.15);
+
+  gainHigh.gain.setValueAtTime(0.15, now);
+  gainHigh.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+  oscHigh.connect(gainHigh);
+  gainHigh.connect(ctx.destination);
+
+  oscHigh.start(now);
+  oscHigh.stop(now + 0.2);
+}
+
+export const playBossAttackSound = playCritHit;
+
+// 4. Shimmering high-pitch chime sequence for Loot Crates
+export function playLootOpen(): void {
+  if (isAudioMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const frequencies = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98]; // C5 to G6 chord
+
+  frequencies.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now + i * 0.06);
+
+    gain.gain.setValueAtTime(0, now + i * 0.06);
+    gain.gain.linearRampToValueAtTime(0.12, now + i * 0.06 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.4);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now + i * 0.06);
+    osc.stop(now + i * 0.06 + 0.45);
+  });
+}
+
+export const playCrateDropChime = playLootOpen;
+export const playCrateOpenSound = playLootOpen;
+export const playLootDrop = playLootOpen;
+
+// 5. Humorous retro buzzer tone for Modulus-to-Allen Nudge
+export function playNudgeBuzzer(): void {
+  if (isAudioMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(160, now);
+  osc.frequency.setValueAtTime(220, now + 0.08);
+
+  gain.gain.setValueAtTime(0.15, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
   osc.start(now);
   osc.stop(now + 0.25);
-
-  const chime = ctx.createOscillator();
-  const chimeGain = ctx.createGain();
-  chime.type = 'sine';
-  chime.frequency.setValueAtTime(1318.5, now + 0.06);
-  chime.frequency.setValueAtTime(1567.98, now + 0.14);
-
-  chimeGain.gain.setValueAtTime(0.001, now + 0.06);
-  chimeGain.gain.exponentialRampToValueAtTime(0.2, now + 0.09);
-  chimeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
-
-  chime.connect(chimeGain);
-  chimeGain.connect(ctx.destination);
-  chime.start(now + 0.06);
-  chime.stop(now + 0.46);
 }
 
-// 4. Shimmering Mystery Loot Crate Chime
-export function playLootOpen(): void {
-  const ctx = getAudioContext();
-  if (!ctx) return;
+export const playRetroBuzzer = playNudgeBuzzer;
 
-  const shimmerFreqs = [587.33, 739.99, 880, 1174.66, 1479.98, 1760];
-  const now = ctx.currentTime;
-
-  shimmerFreqs.forEach((freq, i) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, now + i * 0.055);
-
-    gain.gain.setValueAtTime(0.001, now + i * 0.055);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + i * 0.055 + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.055 + 0.55);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now + i * 0.055);
-    osc.stop(now + i * 0.055 + 0.56);
-  });
-}
-
-// 5. Retro Modulus-to-Allen Buzzer Nudge Alert
-export function playNudgeBuzzer(): void {
+// 6. Crystalline Rest Shield Activation Chime
+export function playShieldActivate(): void {
+  if (isAudioMuted()) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
   const now = ctx.currentTime;
+  const notes = [440, 554.37, 659.25, 880]; // A4 major triad
 
-  [0, 0.16].forEach((offset) => {
+  notes.forEach((freq, idx) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(220, now + offset);
-    osc.frequency.setValueAtTime(185, now + offset + 0.06);
 
-    gain.gain.setValueAtTime(0.18, now + offset);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.13);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now + offset);
-    osc.stop(now + offset + 0.14);
-  });
-}
-
-// 6. Cinematic Dragon Boss Entrance Roar & Sub-Bass Impact
-export function playBossEntrance(): void {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  const now = ctx.currentTime;
-
-  // Deep sub-bass drop
-  const sub = ctx.createOscillator();
-  const subGain = ctx.createGain();
-  sub.type = 'sawtooth';
-  sub.frequency.setValueAtTime(130, now);
-  sub.frequency.exponentialRampToValueAtTime(38, now + 1.1);
-
-  subGain.gain.setValueAtTime(0.001, now);
-  subGain.gain.linearRampToValueAtTime(0.28, now + 0.08);
-  subGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.25);
-
-  sub.connect(subGain);
-  subGain.connect(ctx.destination);
-  sub.start(now);
-  sub.stop(now + 1.3);
-
-  // Brass-like minor chord swell
-  const chord = [220, 261.63, 329.63, 415.3];
-  chord.forEach((freq, idx) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(freq, now + 0.15 + idx * 0.06);
+    osc.frequency.setValueAtTime(freq, now + idx * 0.06);
 
-    gain.gain.setValueAtTime(0.001, now + 0.15 + idx * 0.06);
-    gain.gain.linearRampToValueAtTime(0.12, now + 0.35);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+    gain.gain.setValueAtTime(0, now + idx * 0.06);
+    gain.gain.linearRampToValueAtTime(0.15, now + idx * 0.06 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.35);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.start(now + 0.15 + idx * 0.06);
-    osc.stop(now + 1.45);
+
+    osc.start(now + idx * 0.06);
+    osc.stop(now + idx * 0.06 + 0.4);
   });
 }
+
+// 7. Obnoxious Multi-Horn Airhorn Blast + Chime (for Sound Horn XP Shop Sabotage)
+export function playObnoxiousAirhorn(): void {
+  if (isAudioMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  // Detuned stadium airhorn cluster
+  const hornFreqs = [311.13, 329.63, 466.16, 622.25, 659.25];
+  const blastStarts = [0, 0.22, 0.44];
+  const blastDurations = [0.18, 0.18, 0.65];
+
+  blastStarts.forEach((offset, bIdx) => {
+    const dur = blastDurations[bIdx];
+    hornFreqs.forEach((freq) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + offset);
+      osc.frequency.linearRampToValueAtTime(freq * 0.98, now + offset + dur);
+
+      gain.gain.setValueAtTime(0.01, now + offset);
+      gain.gain.linearRampToValueAtTime(0.14, now + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + offset);
+      osc.stop(now + offset + dur + 0.02);
+    });
+  });
+}
+
+// 8. High-Stakes Duel Callout Horn
+export function playDuelHorn(): void {
+  if (isAudioMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const notes = [293.66, 440, 587.33]; // D4 -> A4 -> D5
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, now + i * 0.11);
+    gain.gain.setValueAtTime(0.16, now + i * 0.11);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.11 + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now + i * 0.11);
+    osc.stop(now + i * 0.11 + 0.38);
+  });
+}
+
