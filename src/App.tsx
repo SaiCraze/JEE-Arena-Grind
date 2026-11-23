@@ -591,8 +591,64 @@ const DIFFICULTY_TIERS = [
 export const CYCLE_1_START = 1791763200000; // Monday Oct 12, 2026 00:00:00 UTC
 export const CYCLE_2_START = 1792368000000; // Monday Oct 19, 2026 00:00:00 UTC
 export const CYCLE_3_START = 1792956600000; // Sunday Oct 25, 2026 19:30:00 UTC (Cutoff boundary, Week 3 active from now onwards)
+export const CYCLE_6_START_MS = 1794761698944; // Sunday Nov 15, 2026 16:54:58 UTC (Cycle 5 -> Cycle 6 cutoff)
+export const CYCLE_7_START_MS = 1795369003552; // Sunday Nov 22, 2026 17:36:43 UTC (Cycle 6 -> Cycle 7 cutoff)
 
 const DEFAULT_SPRINT_HISTORY = [
+  {
+    id: 'sprint_6',
+    sprintNumber: 6,
+    sprintTitle: 'Sprint 6 (Arena Clash)',
+    dateRange: 'Nov 15 - Nov 21, 2026',
+    winnerId: 'utham_940',
+    winnerName: 'Utham',
+    winnerInstitute: 'Modulus',
+    winnerXp: 1162,
+    runnerUpName: 'Sai',
+    runnerUpInstitute: 'Modulus',
+    runnerUpXp: 1060,
+    thirdPlaceName: 'Ananya',
+    thirdPlaceInstitute: 'Modulus',
+    thirdPlaceXp: 862,
+    recordedAt: 1795369000710,
+    standings: [
+      { rank: 1, id: 'utham_940', name: 'Utham', institute: 'Modulus', xp: 1162, title: 'Champion of Sprint 6', studyMins: 1215, questions: 312, percentile: 39.3 },
+      { rank: 2, id: 'sai', name: 'Sai', institute: 'Modulus', xp: 1060, title: 'Runner-Up', studyMins: 1197, questions: 172, percentile: 39.6 },
+      { rank: 3, id: 'ananya_047', name: 'Ananya', institute: 'Modulus', xp: 862, title: 'Third Place', studyMins: 969, questions: 185, percentile: 60.4 },
+      { rank: 4, id: 'aanya_925', name: 'Aanya', institute: 'Modulus', xp: 471, title: 'Top Challenger', studyMins: 150, questions: 240, percentile: 85.2 },
+      { rank: 5, id: 'ujwal_715', name: 'Ujwal', institute: 'Modulus, radius', xp: 402, title: 'Contender', studyMins: 300, questions: 50, percentile: 59.8 },
+      { rank: 6, id: 'sanjana_253', name: 'Sanjana', institute: 'Modulus', xp: 225, title: 'Contender', studyMins: 296, questions: 0, percentile: 33.8 },
+      { rank: 7, id: 'dharhas_590', name: 'Dharhas', institute: 'Modulus', xp: 140, title: 'Warrior', studyMins: 0, questions: 0, percentile: 46.8 },
+      { rank: 8, id: 'ved', name: 'Ved', institute: 'Allen', xp: 91, title: 'Warrior', studyMins: 0, questions: 0, percentile: 30.2 }
+    ]
+  },
+  {
+    id: 'sprint_5',
+    sprintNumber: 5,
+    sprintTitle: 'Sprint 5 (Arena Clash)',
+    dateRange: 'Nov 9 - Nov 15, 2026',
+    winnerId: 'sai',
+    winnerName: 'Sai',
+    winnerInstitute: 'Modulus',
+    winnerXp: 964,
+    runnerUpName: 'Ananya',
+    runnerUpInstitute: 'Modulus',
+    runnerUpXp: 840,
+    thirdPlaceName: 'Ved',
+    thirdPlaceInstitute: 'Allen',
+    thirdPlaceXp: 663,
+    recordedAt: 1794761698944,
+    standings: [
+      { rank: 1, id: 'sai', name: 'Sai', institute: 'Modulus', xp: 964, title: 'Champion of Sprint 5', studyMins: 1138, questions: 118, percentile: 17.1 },
+      { rank: 2, id: 'ananya_047', name: 'Ananya', institute: 'Modulus', xp: 840, title: 'Runner-Up', studyMins: 1080, questions: 202, percentile: 26.2 },
+      { rank: 3, id: 'ved', name: 'Ved', institute: 'Allen', xp: 663, title: 'Third Place', studyMins: 1180, questions: 0, percentile: 55.4 },
+      { rank: 4, id: 'utham_940', name: 'Utham', institute: 'Modulus', xp: 541, title: 'The Iron Core', studyMins: 668, questions: 181, percentile: 13.5 },
+      { rank: 5, id: 'ujwal_715', name: 'Ujwal', institute: 'Modulus, radius', xp: 307, title: 'Contender', studyMins: 410, questions: 50, percentile: 25.8 },
+      { rank: 6, id: 'sanjana_253', name: 'Sanjana', institute: 'Modulus', xp: 299, title: 'Contender', studyMins: 195, questions: 92, percentile: 33.8 },
+      { rank: 7, id: 'aanya_925', name: 'Aanya', institute: 'Modulus', xp: 256, title: 'Warrior', studyMins: 0, questions: 0, percentile: 85.2 },
+      { rank: 8, id: 'dharhas_590', name: 'Dharhas', institute: 'Modulus', xp: 140, title: 'Warrior', studyMins: 0, questions: 0, percentile: 46.8 }
+    ]
+  },
   {
     id: 'sprint_4',
     sprintNumber: 4,
@@ -708,6 +764,18 @@ function mergeSprintHistory(incoming?: any[]): any[] {
         // Ignore premature Week 4 (sprint_4) records created before Week 4's Friday 11:59 PM (Nov 6, 2026 23:59 IST = 1793989740000)
         if ((s.id === 'sprint_4' || Number(s.sprintNumber) === 4) && (!s.recordedAt || Number(s.recordedAt) < 1793989740000)) {
           continue;
+        }
+        // Ignore premature zero-activity Week 7 (sprint_7) snapshots accidentally created right when Cycle 7 started
+        if (s.id === 'sprint_7' || Number(s.sprintNumber) === 7) {
+          const totalMins = Array.isArray(s.standings)
+            ? s.standings.reduce((acc: number, row: any) => acc + (Number(row?.studyMins) || 0), 0)
+            : 0;
+          const totalQs = Array.isArray(s.standings)
+            ? s.standings.reduce((acc: number, row: any) => acc + (Number(row?.questions) || 0), 0)
+            : 0;
+          if (totalMins === 0 && totalQs === 0 && (!s.recordedAt || Number(s.recordedAt) < 1795700000000)) {
+            continue;
+          }
         }
         const existing = map.get(s.id);
         if (!existing) {
@@ -1199,10 +1267,10 @@ export default function App() {
 
   // Navigation & Modals
   const [activeTab, setActiveTab] = useState<'arena' | 'timer' | 'tasks' | 'tuition' | 'stats' | 'admin'>('arena');
-  const [leaderboardScope, setLeaderboardScope] = useState<'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'cycle_5' | 'current_week'>(() => {
+  const [leaderboardScope, setLeaderboardScope] = useState<'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'cycle_5' | 'cycle_6' | 'current_week'>(() => {
     try {
       const saved = localStorage.getItem('jee_arena_leaderboard_scope_v3');
-      if (saved === 'all_time' || saved === 'prev_week' || saved === 'cycle_2' || saved === 'cycle_3' || saved === 'cycle_4' || saved === 'cycle_5' || saved === 'current_week') return saved;
+      if (saved === 'all_time' || saved === 'prev_week' || saved === 'cycle_2' || saved === 'cycle_3' || saved === 'cycle_4' || saved === 'cycle_5' || saved === 'cycle_6' || saved === 'current_week') return saved;
     } catch {
       // ignore
     }
@@ -1210,7 +1278,7 @@ export default function App() {
   });
   const [showWinnersModal, setShowWinnersModal] = useState<boolean>(false);
 
-  const handleSetLeaderboardScope = (scope: 'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'cycle_5' | 'current_week') => {
+  const handleSetLeaderboardScope = (scope: 'all_time' | 'prev_week' | 'cycle_2' | 'cycle_3' | 'cycle_4' | 'cycle_5' | 'cycle_6' | 'current_week') => {
     setLeaderboardScope(scope);
     if (scope === 'all_time') setStudyTimeframeFilter('lifetime');
     else setStudyTimeframeFilter('7d');
@@ -1642,7 +1710,7 @@ export default function App() {
     raidFailedPenaltyActive: Boolean((INITIAL_FIRESTORE_ARENA_STATE as any)?.raidFailedPenaltyActive),
     lastRaidDamageHit: INITIAL_FIRESTORE_ARENA_STATE?.lastRaidDamageHit || null,
     sprintHistory: mergeSprintHistory(INITIAL_FIRESTORE_ARENA_STATE?.sprintHistory),
-    reigningSprintId: (INITIAL_FIRESTORE_ARENA_STATE as any)?.reigningSprintId || 'sprint_4',
+    reigningSprintId: (INITIAL_FIRESTORE_ARENA_STATE as any)?.reigningSprintId || 'sprint_6',
     audits: [],
     duels: [],
     ambushes: [],
@@ -3434,7 +3502,7 @@ export default function App() {
 
   // REAL-TIME CROSS-DEVICE TIMER SYNC:
   // If a timer is started, paused, adjusted, or ended on another device (laptop/phone/tablet),
-  // mirror that exact timer state here immediately!
+  // mirror that exact timer state here immediately! (Guarded against resetting active local timers)
   useEffect(() => {
     if (!currentMember || isGuestMode || !hasServerSyncedRef.current) return;
 
@@ -3484,6 +3552,10 @@ export default function App() {
         localStorage.setItem('jee_arena_timer_linked_task_id', remoteTaskId);
       }
     } else if (!remoteIsGrinding && remoteAccumulated > 0) {
+      // If local timer is running, keep it running! Do not pause from remote.
+      if (eng.status === 'RUNNING') {
+        return;
+      }
       // Never resurrect a paused timer that was already stopped/logged locally
       if (remoteUpdatedAt > 0 && remoteUpdatedAt <= lastStoppedTimerAtRef.current) {
         return;
@@ -3507,6 +3579,10 @@ export default function App() {
         localStorage.setItem('jee_arena_timer_subject', remoteSubject);
       }
     } else if (!remoteIsGrinding && remoteAccumulated === 0) {
+      // CRITICAL FIX: If local timer is running or has accumulated time, NEVER reset it from remote! Keep it running!
+      if (eng.status === 'RUNNING' || eng.accumulatedSeconds > 0 || eng.segmentStartedAt !== null) {
+        return;
+      }
       // Timer was ENDED / RESET / LOGGED on another device -> immediately end it here too!
       if (eng.status !== 'IDLE' || eng.accumulatedSeconds > 0 || eng.segmentStartedAt !== null) {
         persistTimerEngineState({
@@ -3821,6 +3897,7 @@ export default function App() {
       Number(arenaSettings.currentCycleStartMs) || CYCLE_5_START_MS
     );
     const isBeyondCycle5 = activeCycleNum > 5 && activeCycleStartMs > CYCLE_5_START_MS;
+    const isBeyondCycle6 = activeCycleNum > 6 && activeCycleStartMs > CYCLE_6_START_MS;
     const hasCycleBeenReset = activeCycleNum > 5 || activeCycleStartMs > CYCLE_5_START_MS;
 
     const getSessionTime = (s: any): number => {
@@ -3850,7 +3927,7 @@ export default function App() {
       const fridayPendingMins = 0;
       const memSessions = allMemberSessions.filter(s => !isSessionCloaked(s, stealthNow));
 
-      // Strictly isolate sessions for Cycle 1, Cycle 2, Cycle 3, Cycle 4, Cycle 5, and Active Cycle (Cycle 6+)
+      // Strictly isolate sessions for Cycle 1, Cycle 2, Cycle 3, Cycle 4, Cycle 5, Cycle 6, and Active Cycle (Cycle 7+)
       const cycle1Sessions = memSessions.filter(s => {
         const t = getSessionTime(s);
         return t >= CYCLE_1_START && t < CYCLE_2_START;
@@ -3867,11 +3944,18 @@ export default function App() {
         const t = getSessionTime(s);
         return t >= CYCLE_4_START_MS && t < CYCLE_5_START_MS;
       });
+      const cycle5EndMs = isBeyondCycle6 ? CYCLE_6_START_MS : activeCycleStartMs;
       const cycle5Sessions = memSessions.filter(s => {
         const t = getSessionTime(s);
         return isBeyondCycle5
-          ? t >= CYCLE_5_START_MS && t < activeCycleStartMs
+          ? t >= CYCLE_5_START_MS && t < cycle5EndMs
           : t >= CYCLE_5_START_MS;
+      });
+      const cycle6Sessions = memSessions.filter(s => {
+        const t = getSessionTime(s);
+        return isBeyondCycle6
+          ? t >= CYCLE_6_START_MS && t < activeCycleStartMs
+          : t >= CYCLE_6_START_MS;
       });
       const activeSprintSessions = memSessions.filter(s => {
         const t = getSessionTime(s);
@@ -3898,10 +3982,12 @@ export default function App() {
       const rawCycle3Mins = cycle3Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
       const rawCycle4Mins = cycle4Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
       const rawCycle5Mins = cycle5Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
+      const rawCycle6Mins = cycle6Sessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
       const rawActiveSprintMins = activeSprintSessions.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
 
       const totalStudyMins = Math.max(0, rawTotalMins + manualOffsetMins + cycle4OffsetMins + cycle5OffsetMins);
       const weekStudyMins = Math.max(0, rawActiveSprintMins + activeOffsetMins);
+      const cycle6StudyMins = Math.max(0, rawCycle6Mins);
       const cycle5StudyMins = Math.max(0, rawCycle5Mins + (isBeyondCycle5 ? 0 : cycle5OffsetMins));
       const cycle4StudyMins = Math.max(0, rawCycle4Mins + cycle4OffsetMins);
       const cycle3StudyMins = Math.max(0, rawCycle3Mins + manualOffsetMins);
@@ -3914,6 +4000,7 @@ export default function App() {
       const cycle3Questions = cycle3Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const cycle4Questions = cycle4Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const cycle5Questions = cycle5Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
+      const cycle6Questions = cycle6Sessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const weekQuestions = activeSprintSessions.reduce((acc, s) => acc + (Number(s.questions) || 0), 0);
       const prevWeekQuestions = cycle1Questions;
 
@@ -3927,6 +4014,7 @@ export default function App() {
       const studyXpCycle3 = Math.max(0, cycle3Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpCycle4 = Math.max(0, cycle4Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpCycle5 = Math.max(0, cycle5Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
+      const studyXpCycle6 = Math.max(0, cycle6Sessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpWeek = Math.max(0, activeSprintSessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0));
       const studyXpPrevWeek = studyXpCycle1;
       const studyXpTotal = Math.max(0, memSessions.reduce((acc, s) => acc + (Number(s.xpEarned) || 0), 0) + offsetXp + cycle4OffsetXp + cycle5OffsetXp);
@@ -3951,8 +4039,14 @@ export default function App() {
       const cycle5Exams = memExams.filter(e => {
         const t = getSessionTime(e);
         return isBeyondCycle5
-          ? t >= CYCLE_5_START_MS && t < activeCycleStartMs
+          ? t >= CYCLE_5_START_MS && t < cycle5EndMs
           : t >= CYCLE_5_START_MS;
+      });
+      const cycle6Exams = memExams.filter(e => {
+        const t = getSessionTime(e);
+        return isBeyondCycle6
+          ? t >= CYCLE_6_START_MS && t < activeCycleStartMs
+          : t >= CYCLE_6_START_MS;
       });
       const weekExams = memExams.filter(e => {
         const t = getSessionTime(e);
@@ -3993,6 +4087,16 @@ export default function App() {
         examXpWeek = 0;
         standingStatus = 'no_history';
         standingDetail = 'No exam history yet';
+      }
+
+      // Cycle 6 historical exam XP
+      let cycle6ExamXp = 0;
+      if (cycle6Exams.length > 0) {
+        const sumPct = cycle6Exams.reduce((acc, e) => acc + (Number(e.overallPercentile) || 0), 0);
+        cycle6ExamXp = Math.min(300, Math.round((sumPct / cycle6Exams.length) * 3));
+      } else if (latestExam) {
+        const pct = Number(latestExam.overallPercentile) || 0;
+        cycle6ExamXp = pct > 0 ? Math.min(300, Math.round(pct * 3)) : 0;
       }
 
       // Cycle 5 historical exam XP
@@ -4042,6 +4146,7 @@ export default function App() {
         : 0;
 
       let taskXpWeek = 0;
+      let taskXpCycle6 = 0;
       let taskXpCycle5 = 0;
       let taskXpCycle4 = 0;
       let taskXpCycle3 = 0;
@@ -4064,7 +4169,10 @@ export default function App() {
           if (compTime >= activeCycleStartMs) {
             taskXpWeek += reward;
             if (!isBeyondCycle5) taskXpCycle5 += reward;
-          } else if (compTime >= CYCLE_5_START_MS && compTime < activeCycleStartMs) {
+            else if (!isBeyondCycle6) taskXpCycle6 += reward;
+          } else if (compTime >= CYCLE_6_START_MS && compTime < activeCycleStartMs) {
+            taskXpCycle6 += reward;
+          } else if (compTime >= CYCLE_5_START_MS && compTime < cycle5EndMs) {
             taskXpCycle5 += reward;
           } else if (compTime >= CYCLE_4_START_MS && compTime < CYCLE_5_START_MS) {
             taskXpCycle4 += reward;
@@ -4149,6 +4257,20 @@ export default function App() {
       const effectiveTodayXpGenerated = shouldApplySleeperDecoyForViewer ? decoyTodayXpGenerated : realTodayXpGenerated;
       const effectiveStudyXpWeek = shouldApplySleeperDecoyForViewer ? Math.round(studyXpWeek * 0.10) : studyXpWeek;
 
+      // Cycle 6 Score (preserved historical Week 6 score):
+      const archivedSprint6Row = Array.isArray(arenaSettings.sprintHistory)
+        ? arenaSettings.sprintHistory
+            .find((sp: any) => sp && sp.id === 'sprint_6')
+            ?.standings?.find((st: any) => st && (st.id === member.id || String(st.name || '').toLowerCase() === String(member.name || '').toLowerCase()))
+        : null;
+      const computedCycle6Xp = Math.max(0, studyXpCycle6 + cycle6ExamXp + taskXpCycle6);
+      const cycle6Xp = archivedSprint6Row?.xp !== undefined ? Number(archivedSprint6Row.xp) : computedCycle6Xp;
+      const effectiveCycle6StudyMins = archivedSprint6Row?.studyMins !== undefined ? Number(archivedSprint6Row.studyMins) : cycle6StudyMins;
+      const effectiveCycle6Questions = archivedSprint6Row?.questions !== undefined ? Number(archivedSprint6Row.questions) : cycle6Questions;
+      const effectiveCycle6ExamXp = archivedSprint6Row?.percentile !== undefined
+        ? Math.min(300, Math.round(Number(archivedSprint6Row.percentile) * 3))
+        : cycle6ExamXp;
+
       // Cycle 5 Score (preserved historical Week 5 score):
       const archivedSprint5Row = Array.isArray(arenaSettings.sprintHistory)
         ? arenaSettings.sprintHistory
@@ -4157,6 +4279,12 @@ export default function App() {
         : null;
       const computedCycle5Xp = Math.max(0, studyXpCycle5 + cycle5ExamXp + taskXpCycle5 + (isBeyondCycle5 ? 0 : bonusXpCycle5 + cycle5OffsetXp));
       const cycle5Xp = isBeyondCycle5 && archivedSprint5Row?.xp !== undefined ? Number(archivedSprint5Row.xp) : computedCycle5Xp;
+      const effectiveCycle5StudyMins = archivedSprint5Row?.studyMins !== undefined ? Number(archivedSprint5Row.studyMins) : cycle5StudyMins;
+      const effectiveCycle5Questions = archivedSprint5Row?.questions !== undefined ? Number(archivedSprint5Row.questions) : cycle5Questions;
+      const effectiveCycle5ExamXp = archivedSprint5Row?.percentile !== undefined
+        ? Math.min(300, Math.round(Number(archivedSprint5Row.percentile) * 3))
+        : cycle5ExamXp;
+
       // Cycle 4 Score (preserved historical Week 4 score):
       const cycle4Xp = Math.max(0, studyXpCycle4 + cycle4ExamXp + taskXpCycle4 + bonusXpCycle4 + cycle4OffsetXp);
       // Cycle 3 Score (preserved historical Week 3 score):
@@ -4181,11 +4309,16 @@ export default function App() {
         displayStudyMins = effectiveWeekStudyMins;
         displayQuestions = effectiveWeekQuestions;
         displayExamXp = examXpWeek;
+      } else if (leaderboardScope === 'cycle_6') {
+        displayXp = cycle6Xp;
+        displayStudyMins = effectiveCycle6StudyMins;
+        displayQuestions = effectiveCycle6Questions;
+        displayExamXp = effectiveCycle6ExamXp;
       } else if (leaderboardScope === 'cycle_5') {
         displayXp = cycle5Xp;
-        displayStudyMins = archivedSprint5Row?.studyMins !== undefined ? Number(archivedSprint5Row.studyMins) : cycle5StudyMins;
-        displayQuestions = archivedSprint5Row?.questions !== undefined ? Number(archivedSprint5Row.questions) : cycle5Questions;
-        displayExamXp = cycle5ExamXp;
+        displayStudyMins = effectiveCycle5StudyMins;
+        displayQuestions = effectiveCycle5Questions;
+        displayExamXp = effectiveCycle5ExamXp;
       } else if (leaderboardScope === 'cycle_4') {
         displayXp = cycle4Xp;
         displayStudyMins = cycle4StudyMins;
@@ -4314,7 +4447,8 @@ export default function App() {
         weekStudyMins: effectiveWeekStudyMins,
         realWeekStudyMins,
         decoyWeekStudyMins,
-        cycle5StudyMins,
+        cycle6StudyMins: effectiveCycle6StudyMins,
+        cycle5StudyMins: effectiveCycle5StudyMins,
         cycle4StudyMins,
         cycle3StudyMins,
         cycle2StudyMins,
@@ -4323,7 +4457,8 @@ export default function App() {
         weekQuestions: effectiveWeekQuestions,
         realWeekQuestions,
         decoyWeekQuestions,
-        cycle5Questions,
+        cycle6Questions: effectiveCycle6Questions,
+        cycle5Questions: effectiveCycle5Questions,
         cycle4Questions,
         cycle3Questions,
         cycle2Questions,
@@ -4340,13 +4475,15 @@ export default function App() {
         longestSessionMins,
         bestPercentile,
         studyXpWeek: effectiveStudyXpWeek,
+        studyXpCycle6,
         studyXpCycle5,
         studyXpCycle4,
         studyXpCycle3,
         studyXpCycle2,
         studyXpPrevWeek,
         examXpWeek,
-        cycle5ExamXp,
+        cycle6ExamXp: effectiveCycle6ExamXp,
+        cycle5ExamXp: effectiveCycle5ExamXp,
         cycle4ExamXp,
         cycle3ExamXp,
         cycle2ExamXp,
@@ -4359,6 +4496,7 @@ export default function App() {
         sleeperHiddenXp,
         sleeperHiddenMins,
         isWeeklySleeperAgent: isMemberActiveSleeper,
+        cycle6Xp,
         cycle5Xp,
         cycle4Xp,
         cycle3Xp,
@@ -4571,7 +4709,9 @@ export default function App() {
     const activeCycleNum = Math.max(5, Number(arenaSettings.currentCycle) || 5);
     let cycleNum = targetCycleOverride;
     if (!cycleNum) {
-      if (leaderboardScope === 'cycle_5') {
+      if (leaderboardScope === 'cycle_6') {
+        cycleNum = 6;
+      } else if (leaderboardScope === 'cycle_5') {
         cycleNum = 5;
       } else if (leaderboardScope === 'cycle_4') {
         cycleNum = 4;
@@ -4608,6 +4748,9 @@ export default function App() {
       }
       if (cycleNum === 5 && activeCycleNum > 5) {
         return { xp: s.cycle5Xp, studyMins: s.cycle5StudyMins, questions: s.cycle5Questions };
+      }
+      if (cycleNum === 6 && activeCycleNum > 6) {
+        return { xp: s.cycle6Xp, studyMins: s.cycle6StudyMins, questions: s.cycle6Questions };
       }
       return {
         xp: s.realWeeklyXp !== undefined ? s.realWeeklyXp : s.weeklyXp,
@@ -4663,6 +4806,12 @@ export default function App() {
     } else if (cycleNum === 4) {
       sprintTitle = 'Sprint 4 (Arena Clash)';
       dateRange = 'Nov 2 - Nov 8, 2026';
+    } else if (cycleNum === 5) {
+      sprintTitle = 'Sprint 5 (Arena Clash)';
+      dateRange = 'Nov 9 - Nov 15, 2026';
+    } else if (cycleNum === 6) {
+      sprintTitle = 'Sprint 6 (Arena Clash)';
+      dateRange = 'Nov 15 - Nov 21, 2026';
     } else {
       const cycleStartMs =
         (cycleNum === activeCycleNum && arenaSettings.currentCycleStartMs)
@@ -13358,7 +13507,10 @@ export default function App() {
                       label: `Cycle ${Math.max(5, Number(arenaSettings.currentCycle) || 5)}`,
                       mobileLabel: `C${Math.max(5, Number(arenaSettings.currentCycle) || 5)}`
                     },
-                    ...((Number(arenaSettings.currentCycle) || 5) > 5
+                    ...((Number(arenaSettings.currentCycle) || 5) > 6 || mergedSprintHistory.some((s: any) => s?.id === 'sprint_6')
+                      ? [{ id: 'cycle_6' as const, label: 'Cycle 6', mobileLabel: 'C6' }]
+                      : []),
+                    ...((Number(arenaSettings.currentCycle) || 5) > 5 || mergedSprintHistory.some((s: any) => s?.id === 'sprint_5')
                       ? [{ id: 'cycle_5' as const, label: 'Cycle 5', mobileLabel: 'C5' }]
                       : []),
                     { id: 'cycle_4' as const, label: 'Cycle 4', mobileLabel: 'C4' },
@@ -13928,6 +14080,72 @@ export default function App() {
                   );
                 })()}
 
+                {/* Concluded Cycle Winner & Official Podium Strip (Shown when viewing Cycle 1-6) */}
+                {leaderboardScope !== 'current_week' && leaderboardScope !== 'all_time' && (() => {
+                  const scopeToSprintId: Record<string, string> = {
+                    cycle_6: 'sprint_6',
+                    cycle_5: 'sprint_5',
+                    cycle_4: 'sprint_4',
+                    cycle_3: 'sprint_3',
+                    cycle_2: 'sprint_2',
+                    prev_week: 'sprint_1'
+                  };
+                  const targetSprintId = scopeToSprintId[leaderboardScope];
+                  const matchedSprint = mergedSprintHistory.find((sp: any) => sp && sp.id === targetSprintId);
+                  if (!matchedSprint) return null;
+                  const winnerStanding = Array.isArray(matchedSprint.standings) ? matchedSprint.standings[0] : null;
+                  const winnerMins = Number(winnerStanding?.studyMins) || 0;
+                  const winnerHrsStr = winnerMins >= 60 ? `${Math.floor(winnerMins / 60)}h ${winnerMins % 60}m` : `${winnerMins}m`;
+                  const winnerQs = Number(winnerStanding?.questions) || 0;
+
+                  return (
+                    <div className="surface-card rounded-[20px] p-4 sm:px-5 border-2 border-[#FACC15] border-b-4 border-b-[#020617] bg-[#111827] flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+                      <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-[14px] bg-[#FACC15] text-[#020617] border-2 border-[#020617] border-b-4 border-b-[#A16207] flex items-center justify-center shrink-0">
+                          <Crown className="w-6 h-6 stroke-[2.5]" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-mono font-bold text-[#FACC15]">
+                            <span>CYCLE {matchedSprint.sprintNumber} OFFICIAL WINNER</span>
+                            <span className="text-slate-500">·</span>
+                            <span className="text-[#94A3B8]">{matchedSprint.dateRange}</span>
+                          </div>
+                          <div className="text-base sm:text-lg font-display font-bold text-white flex flex-wrap items-center gap-2 mt-0.5">
+                            <span>{matchedSprint.winnerName}</span>
+                            <span className="font-mono tabular-nums text-[#4ADE80] text-sm sm:text-base">
+                              {matchedSprint.winnerXp.toLocaleString()} XP
+                            </span>
+                            {winnerMins > 0 && (
+                              <span className="text-xs font-mono text-[#38BDF8] font-semibold">
+                                · {winnerHrsStr} · {winnerQs} Qs
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-[#94A3B8] font-mono tabular-nums flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                            {matchedSprint.runnerUpName && (
+                              <span>#2 {matchedSprint.runnerUpName} ({matchedSprint.runnerUpXp} XP)</span>
+                            )}
+                            {matchedSprint.thirdPlaceName && (
+                              <span>#3 {matchedSprint.thirdPlaceName} ({matchedSprint.thirdPlaceXp} XP)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => triggerKahootRevealSequence(matchedSprint.id)}
+                          className="arcade-btn-canary px-3.5 py-2 text-xs whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+                          <span>Replay Cycle {matchedSprint.sprintNumber} Podium</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Squad Leaderboard Cards — Clean, Uncluttered, Zero Badge Sandwiches */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 sm:gap-4">
                   {effectiveLeaderboardStats.map((m, idx) => {
@@ -14174,7 +14392,7 @@ export default function App() {
                           <div className="text-[11px] text-slate-400 font-mono-num truncate">
                             <span>Career {m.totalXp.toLocaleString()} XP</span>
                             <span className="mx-1.5">·</span>
-                            <span className="text-sky-300">Mock +{leaderboardScope === 'all_time' ? m.displayExamXp : m.examXpWeek} XP</span>
+                            <span className="text-sky-300">Mock +{m.displayExamXp} XP</span>
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -23875,9 +24093,9 @@ export default function App() {
               </button>
             </div>
 
-            {/* Hall of Champions Dynamic Summary Strip (All Recorded Weekly Winners: Week 3, Week 2, Week 1) */}
+            {/* Hall of Champions Dynamic Summary Strip (All Recorded Weekly Winners) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 shrink-0">
-              {mergedSprintHistory.slice(0, 6).map((sp: any, idx: number) => {
+              {mergedSprintHistory.map((sp: any, idx: number) => {
                 const isReigning = reigningSprint?.id === sp.id || idx === 0;
                 return (
                   <div
@@ -24218,6 +24436,10 @@ export default function App() {
                             handleSetLeaderboardScope('cycle_3');
                           } else if (sprint.sprintNumber === 4) {
                             handleSetLeaderboardScope(isCycle5Active ? 'cycle_4' : 'current_week');
+                          } else if (sprint.sprintNumber === 5) {
+                            handleSetLeaderboardScope((Number(arenaSettings.currentCycle) || 5) > 5 ? 'cycle_5' : 'current_week');
+                          } else if (sprint.sprintNumber === 6) {
+                            handleSetLeaderboardScope((Number(arenaSettings.currentCycle) || 5) > 6 ? 'cycle_6' : 'current_week');
                           } else {
                             handleSetLeaderboardScope('current_week');
                           }

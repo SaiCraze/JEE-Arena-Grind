@@ -343,6 +343,18 @@ function ensureCompleteArenaState(rawState: any, prevState?: any, knownMembers?:
     if ((s.id === 'sprint_4' || Number(s.sprintNumber) === 4) && (!s.recordedAt || Number(s.recordedAt) < 1793989740000)) {
       return;
     }
+    // Ignore premature zero-activity Week 7 (sprint_7) snapshots accidentally created right when Cycle 7 started
+    if (s.id === 'sprint_7' || Number(s.sprintNumber) === 7) {
+      const totalMins = Array.isArray(s.standings)
+        ? s.standings.reduce((acc: number, row: any) => acc + (Number(row?.studyMins) || 0), 0)
+        : 0;
+      const totalQs = Array.isArray(s.standings)
+        ? s.standings.reduce((acc: number, row: any) => acc + (Number(row?.questions) || 0), 0)
+        : 0;
+      if (totalMins === 0 && totalQs === 0 && (!s.recordedAt || Number(s.recordedAt) < 1795700000000)) {
+        return;
+      }
+    }
     const existing = sprintMap.get(s.id);
     if (!existing) {
       sprintMap.set(s.id, s);
@@ -359,6 +371,67 @@ function ensureCompleteArenaState(rawState: any, prevState?: any, knownMembers?:
     sprintMap.set(s.id, { ...existing, ...s, standings: mergedStandings });
   };
 
+  // Audited fallback snapshots for Cycle 5 & Cycle 6 so they can never be lost
+  const auditedFallbackSprints = [
+    {
+      id: 'sprint_6',
+      sprintNumber: 6,
+      sprintTitle: 'Sprint 6 (Arena Clash)',
+      dateRange: 'Nov 15 - Nov 21, 2026',
+      winnerId: 'utham_940',
+      winnerName: 'Utham',
+      winnerInstitute: 'Modulus',
+      winnerXp: 1162,
+      runnerUpName: 'Sai',
+      runnerUpInstitute: 'Modulus',
+      runnerUpXp: 1060,
+      thirdPlaceName: 'Ananya',
+      thirdPlaceInstitute: 'Modulus',
+      thirdPlaceXp: 862,
+      recordedAt: 1795369000710,
+      standings: [
+        { rank: 1, id: 'utham_940', name: 'Utham', institute: 'Modulus', xp: 1162, title: 'Champion of Sprint 6', studyMins: 1215, questions: 312, percentile: 39.3 },
+        { rank: 2, id: 'sai', name: 'Sai', institute: 'Modulus', xp: 1060, title: 'Runner-Up', studyMins: 1197, questions: 172, percentile: 39.6 },
+        { rank: 3, id: 'ananya_047', name: 'Ananya', institute: 'Modulus', xp: 862, title: 'Third Place', studyMins: 969, questions: 185, percentile: 60.4 },
+        { rank: 4, id: 'aanya_925', name: 'Aanya', institute: 'Modulus', xp: 471, title: 'Top Challenger', studyMins: 150, questions: 240, percentile: 85.2 },
+        { rank: 5, id: 'ujwal_715', name: 'Ujwal', institute: 'Modulus, radius', xp: 402, title: 'Contender', studyMins: 300, questions: 50, percentile: 59.8 },
+        { rank: 6, id: 'sanjana_253', name: 'Sanjana', institute: 'Modulus', xp: 225, title: 'Contender', studyMins: 296, questions: 0, percentile: 33.8 },
+        { rank: 7, id: 'dharhas_590', name: 'Dharhas', institute: 'Modulus', xp: 140, title: 'Warrior', studyMins: 0, questions: 0, percentile: 46.8 },
+        { rank: 8, id: 'ved', name: 'Ved', institute: 'Allen', xp: 91, title: 'Warrior', studyMins: 0, questions: 0, percentile: 30.2 }
+      ]
+    },
+    {
+      id: 'sprint_5',
+      sprintNumber: 5,
+      sprintTitle: 'Sprint 5 (Arena Clash)',
+      dateRange: 'Nov 9 - Nov 15, 2026',
+      winnerId: 'sai',
+      winnerName: 'Sai',
+      winnerInstitute: 'Modulus',
+      winnerXp: 964,
+      runnerUpName: 'Ananya',
+      runnerUpInstitute: 'Modulus',
+      runnerUpXp: 840,
+      thirdPlaceName: 'Ved',
+      thirdPlaceInstitute: 'Allen',
+      thirdPlaceXp: 663,
+      recordedAt: 1794761698944,
+      standings: [
+        { rank: 1, id: 'sai', name: 'Sai', institute: 'Modulus', xp: 964, title: 'Champion of Sprint 5', studyMins: 1138, questions: 118, percentile: 17.1 },
+        { rank: 2, id: 'ananya_047', name: 'Ananya', institute: 'Modulus', xp: 840, title: 'Runner-Up', studyMins: 1080, questions: 202, percentile: 26.2 },
+        { rank: 3, id: 'ved', name: 'Ved', institute: 'Allen', xp: 663, title: 'Third Place', studyMins: 1180, questions: 0, percentile: 55.4 },
+        { rank: 4, id: 'utham_940', name: 'Utham', institute: 'Modulus', xp: 541, title: 'The Iron Core', studyMins: 668, questions: 181, percentile: 13.5 },
+        { rank: 5, id: 'ujwal_715', name: 'Ujwal', institute: 'Modulus, radius', xp: 307, title: 'Contender', studyMins: 410, questions: 50, percentile: 25.8 },
+        { rank: 6, id: 'sanjana_253', name: 'Sanjana', institute: 'Modulus', xp: 299, title: 'Contender', studyMins: 195, questions: 92, percentile: 33.8 },
+        { rank: 7, id: 'aanya_925', name: 'Aanya', institute: 'Modulus', xp: 256, title: 'Warrior', studyMins: 0, questions: 0, percentile: 85.2 },
+        { rank: 8, id: 'dharhas_590', name: 'Dharhas', institute: 'Modulus', xp: 140, title: 'Warrior', studyMins: 0, questions: 0, percentile: 46.8 }
+      ]
+    }
+  ];
+
+  for (const audited of auditedFallbackSprints) {
+    upsertSprint(audited);
+  }
   if (Array.isArray(INITIAL_FIRESTORE_ARENA_STATE?.sprintHistory)) {
     for (const defSprint of INITIAL_FIRESTORE_ARENA_STATE.sprintHistory) {
       upsertSprint(defSprint);
@@ -399,10 +472,10 @@ function ensureCompleteArenaState(rawState: any, prevState?: any, knownMembers?:
     base.reigningSprintId === 'sprint_1'
   ) {
     const topSprint = Array.isArray(base.sprintHistory) ? base.sprintHistory[0] : null;
-    const hasValidSprint4 = base.sprintHistory.some((s: any) => s.id === 'sprint_4');
-    base.reigningSprintId = topSprint?.id || (hasValidSprint4 ? 'sprint_4' : 'sprint_3');
-    base.weeklyChampion = topSprint?.winnerName || (hasValidSprint4 ? 'Sai' : 'Utham');
-    base.weeklyChampionXp = topSprint?.winnerXp ?? (hasValidSprint4 ? 1808 : 1605);
+    const hasValidSprint6 = base.sprintHistory.some((s: any) => s.id === 'sprint_6');
+    base.reigningSprintId = topSprint?.id || (hasValidSprint6 ? 'sprint_6' : 'sprint_4');
+    base.weeklyChampion = topSprint?.winnerName || (hasValidSprint6 ? 'Utham' : 'Sai');
+    base.weeklyChampionXp = topSprint?.winnerXp ?? (hasValidSprint6 ? 1162 : 1808);
   }
   base.audits = Array.isArray(rawState?.audits) ? rawState.audits : (Array.isArray(prevState?.audits) ? prevState.audits : []);
   base.duels = Array.isArray(rawState?.duels) ? rawState.duels : (Array.isArray(prevState?.duels) ? prevState.duels : []);

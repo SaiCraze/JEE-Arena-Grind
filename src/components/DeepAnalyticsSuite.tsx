@@ -39,11 +39,14 @@ interface DeepAnalyticsSuiteProps {
   onJumpToCompareWith?: (ids: string[]) => void;
 }
 
-type TimeframeWindow = '7d' | '14d' | '30d' | 'cycle_4' | 'cycle_3' | 'lifetime';
+type TimeframeWindow = '7d' | '14d' | '30d' | 'cycle_6' | 'cycle_5' | 'cycle_4' | 'cycle_3' | 'lifetime';
 
 const CYCLE_1_START = new Date('2026-10-12T00:00:00').getTime();
 const CYCLE_2_START = new Date('2026-10-19T00:00:00').getTime();
 const CYCLE_3_START = new Date('2026-10-26T00:00:00').getTime();
+const CYCLE_5_START = 1794163000000;
+const CYCLE_6_START = 1794761698944;
+const CYCLE_7_START = 1795369003552;
 
 const formatMins = (mins: number) => {
   const m = Math.max(0, Math.round(mins || 0));
@@ -86,7 +89,9 @@ function filterSessionsByWindow(allSessions: any[], scholarId: string | 'ALL', t
     if (timeframe === '7d') return ts >= nowMs - 7 * 24 * 3600 * 1000;
     if (timeframe === '14d') return ts >= nowMs - 14 * 24 * 3600 * 1000;
     if (timeframe === '30d') return ts >= nowMs - 30 * 24 * 3600 * 1000;
-    if (timeframe === 'cycle_4') return ts >= CYCLE_4_START_MS;
+    if (timeframe === 'cycle_6') return ts >= CYCLE_6_START && ts < CYCLE_7_START;
+    if (timeframe === 'cycle_5') return ts >= CYCLE_5_START && ts < CYCLE_6_START;
+    if (timeframe === 'cycle_4') return ts >= CYCLE_4_START_MS && ts < CYCLE_5_START;
     if (timeframe === 'cycle_3') return ts >= CYCLE_3_START && ts < CYCLE_4_START_MS;
     return true;
   });
@@ -689,10 +694,22 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
         examXp: Number(stat.cycle3ExamXp) || 0
       };
       const c4 = {
-        xp: Number(stat.weeklyXp) || 0,
-        mins: Number(stat.weekStudyMins) || 0,
-        questions: Number(stat.weekQuestions) || 0,
-        examXp: Number(stat.examXpWeek) || 0
+        xp: Number(stat.cycle4Xp ?? stat.weeklyXp) || 0,
+        mins: Number(stat.cycle4StudyMins ?? stat.weekStudyMins) || 0,
+        questions: Number(stat.cycle4Questions ?? stat.weekQuestions) || 0,
+        examXp: Number(stat.cycle4ExamXp ?? stat.examXpWeek) || 0
+      };
+      const c5 = {
+        xp: Number(stat.cycle5Xp) || 0,
+        mins: Number(stat.cycle5StudyMins) || 0,
+        questions: Number(stat.cycle5Questions) || 0,
+        examXp: Number(stat.cycle5ExamXp) || 0
+      };
+      const c6 = {
+        xp: Number(stat.cycle6Xp) || 0,
+        mins: Number(stat.cycle6StudyMins) || 0,
+        questions: Number(stat.cycle6Questions) || 0,
+        examXp: Number(stat.cycle6ExamXp) || 0
       };
 
       const subjectRoi: Record<
@@ -780,6 +797,8 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
         c2,
         c3,
         c4,
+        c5,
+        c6,
         subjectRoi,
         attribution: {
           durationXp: durationXpEstimate,
@@ -998,8 +1017,10 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
                 { id: '7d' as const, label: '7D' },
                 { id: '14d' as const, label: '14D' },
                 { id: '30d' as const, label: '30D' },
-                { id: 'cycle_4' as const, label: 'Week 4 (Live)' },
-                { id: 'cycle_3' as const, label: 'Week 3' },
+                { id: 'cycle_6' as const, label: 'Cycle 6' },
+                { id: 'cycle_5' as const, label: 'Cycle 5' },
+                { id: 'cycle_4' as const, label: 'Cycle 4' },
+                { id: 'cycle_3' as const, label: 'Cycle 3' },
                 { id: 'lifetime' as const, label: 'All-Time Career' }
               ]).map((tf) => (
                 <button
@@ -1841,6 +1862,8 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
               { id: '7d' as const, label: 'Last 7D' },
               { id: '14d' as const, label: 'Last 14D' },
               { id: '30d' as const, label: 'Last 30D' },
+              { id: 'cycle_6' as const, label: 'Cycle 6' },
+              { id: 'cycle_5' as const, label: 'Cycle 5' },
               { id: 'cycle_4' as const, label: 'Cycle 4' },
               { id: 'cycle_3' as const, label: 'Cycle 3' },
               { id: 'lifetime' as const, label: 'All-Time' }
@@ -2294,7 +2317,9 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
       r.c1[cycleComparisonMetric],
       r.c2[cycleComparisonMetric],
       r.c3[cycleComparisonMetric],
-      r.c4[cycleComparisonMetric]
+      r.c4[cycleComparisonMetric],
+      r.c5[cycleComparisonMetric],
+      r.c6[cycleComparisonMetric]
     ])
   );
 
@@ -2306,15 +2331,15 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
 
   return (
     <div className="space-y-5 animate-view">
-      {/* Section 1: Longitudinal Cycle-Over-Cycle Progression Matrix (Cycle 1 -> Cycle 2 -> Cycle 3 -> Cycle 4) */}
+      {/* Section 1: Longitudinal Cycle-Over-Cycle Progression Matrix (Cycles 1 to 6) */}
       <div className="surface-card rounded-3xl p-4 sm:p-6 border border-white/10 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-white font-display">
-              Longitudinal Cycle-Over-Cycle Sprint Progression (Cycles 1 to 4)
+              Longitudinal Cycle-Over-Cycle Sprint Progression (Cycles 1 to 6)
             </h3>
             <p className="text-xs text-slate-400">
-              Track week-over-week growth in total XP, study duration, solved questions, and normalized exam XP across every sprint cycle.
+              Track week-over-week growth in total XP, study duration, solved questions, and normalized exam XP across every concluded sprint cycle.
             </p>
           </div>
 
@@ -2341,14 +2366,41 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
           </div>
         </div>
 
-        {/* Official Concluded Weekly Sprint Champions & Podium Strip (Weeks 1, 2 & 3) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        {/* Official Concluded Weekly Sprint Champions & Podium Strip (Weeks 1 to 6) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {[
+            {
+              week: 6,
+              title: 'Sprint 6 (Arena Clash)',
+              dates: 'Nov 15 - Nov 21, 2026',
+              reigning: true,
+              gold: 'Utham (1162 XP)',
+              silver: 'Sai (1060 XP)',
+              bronze: 'Ananya (862 XP)'
+            },
+            {
+              week: 5,
+              title: 'Sprint 5 (Arena Clash)',
+              dates: 'Nov 9 - Nov 15, 2026',
+              reigning: false,
+              gold: 'Sai (964 XP)',
+              silver: 'Ananya (840 XP)',
+              bronze: 'Ved (663 XP)'
+            },
+            {
+              week: 4,
+              title: 'Sprint 4 (Arena Clash)',
+              dates: 'Nov 2 - Nov 8, 2026',
+              reigning: false,
+              gold: 'Sai (1808 XP)',
+              silver: 'Ananya (1254 XP)',
+              bronze: 'Utham (1182 XP)'
+            },
             {
               week: 3,
               title: 'Sprint 3 (Blackout Reckoning)',
               dates: 'Oct 26 - Nov 1, 2026',
-              reigning: true,
+              reigning: false,
               gold: 'Utham (1605 XP)',
               silver: 'Ved (1536 XP)',
               bronze: 'Ananya (1506 XP)'
@@ -2403,7 +2455,7 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
 
         <div className="space-y-4">
           {(() => {
-            const rankInCycle = (cycleKey: 'c1' | 'c2' | 'c3' | 'c4', memberId: string) => {
+            const rankInCycle = (cycleKey: 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'c6', memberId: string) => {
               const sorted = [...cycleAndRoiData].sort((a, b) => (b[cycleKey]?.xp || 0) - (a[cycleKey]?.xp || 0));
               const idx = sorted.findIndex((r) => r.id === memberId);
               if (idx < 0 || (sorted[idx]?.[cycleKey]?.xp || 0) <= 0) return null;
@@ -2411,8 +2463,8 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
             };
 
             return cycleAndRoiData.map((row) => {
-              const c2Delta = row.c2[cycleComparisonMetric] - row.c1[cycleComparisonMetric];
-              const c3Delta = row.c3[cycleComparisonMetric] - row.c2[cycleComparisonMetric];
+              const c5Delta = row.c5[cycleComparisonMetric] - row.c4[cycleComparisonMetric];
+              const c6Delta = row.c6[cycleComparisonMetric] - row.c5[cycleComparisonMetric];
 
               return (
                 <div
@@ -2429,12 +2481,12 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
                           <span>{row.name}</span>
                           {row.id === 'utham_940' && (
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 font-extrabold">
-                              👑 Week 3 Winner
+                              👑 Week 3 &amp; 6 Winner
                             </span>
                           )}
                           {row.id === 'sai' && (
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-400/35 text-sky-300 font-bold">
-                              🏆 Week 2 &amp; 4 Winner
+                              🏆 Week 2, 4 &amp; 5 Winner
                             </span>
                           )}
                           {row.id === 'dharhas_590' && (
@@ -2451,28 +2503,30 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
 
                     <div className="flex flex-wrap items-center gap-3 text-xs font-mono-num">
                       <span className="text-slate-400">
-                        C1 → C2:{' '}
-                        <strong className={c2Delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                          {c2Delta >= 0 ? '+' : ''}
-                          {formatCycleMetric(c2Delta)}
+                        C4 → C5:{' '}
+                        <strong className={c5Delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {c5Delta >= 0 ? '+' : ''}
+                          {formatCycleMetric(c5Delta)}
                         </strong>
                       </span>
                       <span className="text-slate-400">
-                        C2 → C3:{' '}
-                        <strong className={c3Delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                          {c3Delta >= 0 ? '+' : ''}
-                          {formatCycleMetric(c3Delta)}
+                        C5 → C6:{' '}
+                        <strong className={c6Delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {c6Delta >= 0 ? '+' : ''}
+                          {formatCycleMetric(c6Delta)}
                         </strong>
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
                     {([
                       { key: 'c1', label: 'Cycle 1 (Oct 12 - 18)', data: row.c1, bar: 'bg-slate-400' },
                       { key: 'c2', label: 'Cycle 2 (Oct 19 - 25)', data: row.c2, bar: 'bg-sky-400' },
                       { key: 'c3', label: 'Cycle 3 (Oct 26 - Nov 1)', data: row.c3, bar: 'bg-amber-400' },
-                      { key: 'c4', label: 'Cycle 4 (Active Sprint)', data: row.c4, bar: 'bg-emerald-400' }
+                      { key: 'c4', label: 'Cycle 4 (Nov 2 - 8)', data: row.c4, bar: 'bg-violet-400' },
+                      { key: 'c5', label: 'Cycle 5 (Nov 9 - 15)', data: row.c5, bar: 'bg-cyan-400' },
+                      { key: 'c6', label: 'Cycle 6 (Nov 15 - 21)', data: row.c6, bar: 'bg-emerald-400' }
                     ] as const).map((cyc) => {
                       const val = cyc.data[cycleComparisonMetric];
                       const pct = Math.round((val / maxCycleMetricVal) * 100);
@@ -2481,7 +2535,7 @@ export const DeepAnalyticsSuite: React.FC<DeepAnalyticsSuiteProps> = ({
                         <div
                           key={cyc.key}
                           className={`p-3 rounded-xl bg-zinc-900/70 border space-y-1.5 ${
-                            cycRank === 1 && cyc.key !== 'c4'
+                            cycRank === 1
                               ? 'border-amber-400/45'
                               : 'border-zinc-800/80'
                           }`}
